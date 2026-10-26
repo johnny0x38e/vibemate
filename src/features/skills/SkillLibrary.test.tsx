@@ -21,6 +21,7 @@ import {
     installSkill,
     listMarketplaceSkills,
     listSkillDeployments,
+    listSkillDeployRecoveries,
     listSkills,
     pickSkillFolder,
     previewMarketplaceInstall,
@@ -51,6 +52,7 @@ vi.mock(import("../../lib/desktop/skills"), async (importOriginal) => ({
     cleanupDeletedSkillCopies: vi.fn(),
     previewSkillDeploy: vi.fn(),
     listSkillDeployments: vi.fn(),
+    listSkillDeployRecoveries: vi.fn(),
 }));
 const list = vi.mocked(listSkills);
 const get = vi.mocked(getSkill);
@@ -66,6 +68,7 @@ const remove = vi.mocked(deleteSkill);
 const removeCopies = vi.mocked(cleanupDeletedSkillCopies);
 const previewDeploy = vi.mocked(previewSkillDeploy);
 const listDeployments = vi.mocked(listSkillDeployments);
+const listRecoveries = vi.mocked(listSkillDeployRecoveries);
 
 const ID = "0123456789abcdef0123456789abcdef";
 const row: SkillRecord = {
@@ -213,6 +216,9 @@ beforeEach(() => {
     });
     previewDeploy.mockReset().mockResolvedValue({ kind: "preview" });
     listDeployments
+        .mockReset()
+        .mockResolvedValue({ kind: "desktop", items: [] });
+    listRecoveries
         .mockReset()
         .mockResolvedValue({ kind: "desktop", items: [] });
     save.mockReset().mockResolvedValue({

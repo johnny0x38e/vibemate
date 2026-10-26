@@ -14,6 +14,7 @@ import { countProviderModels } from "../../lib/desktop/models";
 import { listMcpDefinitions } from "../../lib/desktop/mcp";
 import { listProviders } from "../../lib/desktop/providers";
 import { listSkills } from "../../lib/desktop/skills";
+import { RecoveryHub } from "./RecoveryHub";
 import styles from "./OverviewView.module.css";
 
 /** Sidebar destinations a stat card can open. Models open Providers (no models nav). */
@@ -233,6 +234,7 @@ export function OverviewView({ onNavigate }: OverviewViewProps): JSX.Element {
                 title={t("desktop.nav.overview")}
                 headingId={headingId}
             />
+            <RecoveryHub onNavigate={onNavigate} />
             <ul
                 className={styles["grid"]}
                 aria-label={t("desktop.overview.stats")}

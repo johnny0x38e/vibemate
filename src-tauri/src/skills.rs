@@ -14,8 +14,9 @@ mod update;
 mod validation;
 
 pub use deploy::{
-    apply_skill_deploy, disable_skill_deploy, list_agent_skill_deployments, list_skill_deployments,
-    preview_skill_deploy,
+    apply_skill_deploy, disable_skill_deploy, dismiss_skill_deploy_recovery,
+    finish_skill_deploy_recovery, list_agent_skill_deployments, list_skill_deploy_recoveries,
+    list_skill_deployments, preview_skill_deploy,
 };
 pub use install::{install_skill, preview_skill_install};
 pub use marketplace::{
@@ -30,9 +31,11 @@ pub use types::{
     ImportFolderRequest, MarketplaceBoard, MarketplaceInstallRequest, MarketplaceSkill,
     NpxInstallSource, PickedFolder, PreviewSkillUpdateRequest, ReviewedSkillDeploy,
     SetSkillSourceRequest, SkillDeployAgent, SkillDeployDisabled, SkillDeployMode,
-    SkillDeployPreview, SkillDeployTargetState, SkillDeployed, SkillDeploymentRecord, SkillError,
-    SkillInstallPreview, SkillInstallReport, SkillInstallSource, SkillPage, SkillRecord,
-    SkillRevisionCheckStatus, SkillUpdateApplied, SkillUpdateDeployOutcome,
+    SkillDeployOperationKind, SkillDeployOperationState, SkillDeployPreview,
+    SkillDeployRecoveryAction, SkillDeployRecoveryClassification, SkillDeployRecoveryItem,
+    SkillDeployRecoveryResolved, SkillDeployTargetState, SkillDeployed, SkillDeploymentRecord,
+    SkillError, SkillInstallPreview, SkillInstallReport, SkillInstallSource, SkillPage,
+    SkillRecord, SkillRevisionCheckStatus, SkillUpdateApplied, SkillUpdateDeployOutcome,
     SkillUpdateDeployResult, SkillUpdateDiff, SkillUpdatePreview, SkillUpdateStatus,
     SkillUpdateStrategy, SkippedSkill,
 };

@@ -68,6 +68,26 @@
     overflow-wrap: anywhere;
 }
 
+/* Unfinished deploy journal: sits above the library list when rows exist. */
+.recovery {
+    display: grid;
+    gap: var(--space-sm);
+    margin-top: var(--page-content-gap);
+}
+
+.recoveryTitle {
+    margin: 0;
+    font-size: 0.9375rem;
+    font-weight: 600;
+    line-height: 1.4;
+}
+
+.recoveryBody {
+    display: grid;
+    gap: 2px;
+    min-width: 0;
+}
+
 /* Library total: the first line above the list, never a badge or a chip. */
 .count {
     margin: var(--page-content-gap) 0 0;

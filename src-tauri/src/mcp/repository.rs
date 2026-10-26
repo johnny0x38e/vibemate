@@ -387,10 +387,16 @@ pub(super) fn commit_definition_delete(
     if record.revision != request.expected_revision {
         return Err(McpError::RevisionConflict);
     }
-    let in_use: bool = tx.query_row(
-        "SELECT EXISTS(SELECT 1 FROM pi_mcp_deployment WHERE definition_id=?1) OR EXISTS(SELECT 1 FROM pi_mcp_change WHERE definition_id=?1 AND state='prepared')",
-        [&request.id], |row| row.get(0),
-    ).map_err(|_| McpError::ReadFailed)?;
+    let in_use: bool = tx
+        .query_row(
+            "SELECT EXISTS(SELECT 1 FROM pi_mcp_deployment WHERE definition_id=?1)
+            OR EXISTS(SELECT 1 FROM pi_mcp_change WHERE definition_id=?1 AND state='prepared')
+            OR EXISTS(SELECT 1 FROM grok_mcp_deployment WHERE definition_id=?1)
+            OR EXISTS(SELECT 1 FROM grok_mcp_change WHERE definition_id=?1 AND state='prepared')",
+            [&request.id],
+            |row| row.get(0),
+        )
+        .map_err(|_| McpError::ReadFailed)?;
     if in_use {
         return Err(McpError::McpInUse);
     }

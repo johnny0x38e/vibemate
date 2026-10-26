@@ -1,15 +1,18 @@
 //! Temporary-directory tests for Pi and Grok skill deploy.
 
 use super::{
-    apply_skill_deploy, disable_skill_deploy, list_agent_skill_deployments, preview_skill_deploy,
-    refresh_skill_deployments_after_update,
+    apply_skill_deploy, disable_skill_deploy, dismiss_skill_deploy_recovery,
+    finish_skill_deploy_recovery, list_agent_skill_deployments, list_skill_deploy_recoveries,
+    preview_skill_deploy, refresh_skill_deployments_after_update,
 };
 use crate::agents::DiscoveryEnvironment;
 use crate::skills::manifest::MANIFEST_FILE_NAME;
 use crate::skills::service::{self, import_one};
 use crate::skills::types::{
     DeleteSkillRequest, DisableSkillDeployRequest, ReviewedSkillDeploy, SkillDeployAgent,
-    SkillDeployMode, SkillDeployTargetState, SkillError, SkillUpdateDeployOutcome,
+    SkillDeployMode, SkillDeployOperationKind, SkillDeployRecoveryAction,
+    SkillDeployRecoveryClassification, SkillDeployTargetState, SkillError,
+    SkillUpdateDeployOutcome,
 };
 use crate::skills::{SkillLibrary, delete_skill};
 use crate::storage::Storage;
@@ -521,5 +524,407 @@ fn stale_target_state_is_rejected() {
     let error = fixture
         .apply(reviewed_from_preview(&preview, SkillDeployMode::Symlink))
         .expect_err("stale");
+    assert_eq!(error, SkillError::TargetChanged);
+}
+
+struct JournalSeed<'a> {
+    id: &'a str,
+    kind: &'a str,
+    skill_id: &'a str,
+    agent_id: &'a str,
+    config_root: &'a str,
+    target_name: &'a str,
+    target_path: &'a str,
+    mode: &'a str,
+    skill_revision: i64,
+    content_digest: &'a str,
+}
+
+fn insert_journal(fixture: &Fixture, seed: &JournalSeed<'_>) {
+    fixture
+        .storage
+        .lock()
+        .expect("lock")
+        .execute(
+            "INSERT INTO skill_deploy_operation(
+                id, kind, state, skill_id, agent_id, config_root, target_name,
+                target_path, mode, skill_revision, content_digest, created_at, updated_at
+             ) VALUES(?1,?2,'prepared',?3,?4,?5,?6,?7,?8,?9,?10,?11,?11)",
+            rusqlite::params![
+                seed.id,
+                seed.kind,
+                seed.skill_id,
+                seed.agent_id,
+                seed.config_root,
+                seed.target_name,
+                seed.target_path,
+                seed.mode,
+                seed.skill_revision,
+                seed.content_digest,
+                NOW,
+            ],
+        )
+        .expect("insert journal");
+}
+
+#[test]
+fn successful_apply_and_disable_leave_no_journal_row() {
+    let fixture = Fixture::new();
+    let record = fixture.import("clean-journal");
+    let preview = fixture
+        .preview(SkillDeployAgent::Pi, &record.id)
+        .expect("preview");
+    fixture
+        .apply(reviewed_from_preview(&preview, SkillDeployMode::Symlink))
+        .expect("apply");
+    assert!(
+        list_skill_deploy_recoveries(&fixture.library, &fixture.storage)
+            .expect("list")
+            .is_empty()
+    );
+    fixture
+        .disable(SkillDeployAgent::Pi, &record.id, &preview.config_root)
+        .expect("disable");
+    assert!(
+        list_skill_deploy_recoveries(&fixture.library, &fixture.storage)
+            .expect("list")
+            .is_empty()
+    );
+}
+
+#[test]
+fn crash_after_apply_write_without_ownership_needs_record_and_finish_records_it() {
+    let fixture = Fixture::new();
+    let record = fixture.import("needs-record");
+    let preview = fixture
+        .preview(SkillDeployAgent::Pi, &record.id)
+        .expect("preview");
+    let target = fixture.target(SkillDeployAgent::Pi, &record.name);
+    fs::create_dir_all(target.parent().expect("parent")).expect("skills dir");
+    #[cfg(unix)]
+    std::os::unix::fs::symlink(fixture.library.root().join(&record.id), &target).expect("symlink");
+    #[cfg(windows)]
+    std::os::windows::fs::symlink_dir(fixture.library.root().join(&record.id), &target)
+        .expect("symlink");
+    let op_id = "a".repeat(32);
+    insert_journal(
+        &fixture,
+        &JournalSeed {
+            id: &op_id,
+            kind: "apply",
+            skill_id: &record.id,
+            agent_id: "pi",
+            config_root: &preview.config_root,
+            target_name: &record.name,
+            target_path: &preview.target_path,
+            mode: "symlink",
+            skill_revision: record.revision,
+            content_digest: &record.content_digest,
+        },
+    );
+
+    let listed = list_skill_deploy_recoveries(&fixture.library, &fixture.storage).expect("list");
+    assert_eq!(listed.len(), 1);
+    assert_eq!(listed[0].kind, SkillDeployOperationKind::Apply);
+    assert_eq!(
+        listed[0].classification,
+        SkillDeployRecoveryClassification::NeedsRecord
+    );
+    assert!(listed[0].can_finish);
+    assert!(!listed[0].can_dismiss);
+
+    finish_skill_deploy_recovery(
+        &fixture.library,
+        &fixture.storage,
+        SkillDeployRecoveryAction {
+            id: op_id.clone(),
+            expected_classification: SkillDeployRecoveryClassification::NeedsRecord,
+        },
+    )
+    .expect("finish");
+    assert!(
+        list_skill_deploy_recoveries(&fixture.library, &fixture.storage)
+            .expect("list")
+            .is_empty()
+    );
+    let deployments = list_agent_skill_deployments(
+        &fixture.library,
+        &fixture.storage,
+        &fixture.environment(),
+        SkillDeployAgent::Pi,
+    )
+    .expect("deployments");
+    assert_eq!(deployments.len(), 1);
+    assert_eq!(deployments[0].skill_id, record.id);
+    assert!(deployments[0].in_sync);
+
+    let error = finish_skill_deploy_recovery(
+        &fixture.library,
+        &fixture.storage,
+        SkillDeployRecoveryAction {
+            id: op_id,
+            expected_classification: SkillDeployRecoveryClassification::NeedsRecord,
+        },
+    )
+    .expect_err("second finish");
+    assert_eq!(error, SkillError::NotFound);
+}
+
+#[test]
+fn crash_after_disable_removal_with_stale_ownership_needs_record_clear() {
+    let fixture = Fixture::new();
+    let record = fixture.import("needs-clear");
+    let preview = fixture
+        .preview(SkillDeployAgent::Pi, &record.id)
+        .expect("preview");
+    fixture
+        .apply(reviewed_from_preview(&preview, SkillDeployMode::Symlink))
+        .expect("apply");
+    let target = fixture.target(SkillDeployAgent::Pi, &record.name);
+    fs::remove_file(&target).expect("remove target");
+    let op_id = "b".repeat(32);
+    insert_journal(
+        &fixture,
+        &JournalSeed {
+            id: &op_id,
+            kind: "disable",
+            skill_id: &record.id,
+            agent_id: "pi",
+            config_root: &preview.config_root,
+            target_name: &record.name,
+            target_path: &preview.target_path,
+            mode: "symlink",
+            skill_revision: record.revision,
+            content_digest: &record.content_digest,
+        },
+    );
+
+    let listed = list_skill_deploy_recoveries(&fixture.library, &fixture.storage).expect("list");
+    assert_eq!(listed.len(), 1);
+    assert_eq!(
+        listed[0].classification,
+        SkillDeployRecoveryClassification::NeedsRecordClear
+    );
+
+    finish_skill_deploy_recovery(
+        &fixture.library,
+        &fixture.storage,
+        SkillDeployRecoveryAction {
+            id: op_id,
+            expected_classification: SkillDeployRecoveryClassification::NeedsRecordClear,
+        },
+    )
+    .expect("finish");
+    assert!(
+        list_agent_skill_deployments(
+            &fixture.library,
+            &fixture.storage,
+            &fixture.environment(),
+            SkillDeployAgent::Pi,
+        )
+        .expect("deployments")
+        .is_empty()
+    );
+    assert!(
+        list_skill_deploy_recoveries(&fixture.library, &fixture.storage)
+            .expect("list")
+            .is_empty()
+    );
+}
+
+#[test]
+fn foreign_target_conflict_refuses_finish_and_allows_dismiss() {
+    let fixture = Fixture::new();
+    let record = fixture.import("conflict");
+    let preview = fixture
+        .preview(SkillDeployAgent::Pi, &record.id)
+        .expect("preview");
+    let target = fixture.target(SkillDeployAgent::Pi, &record.name);
+    fs::create_dir_all(&target).expect("foreign");
+    fs::write(target.join("foreign.txt"), "nope").expect("file");
+    let op_id = "c".repeat(32);
+    insert_journal(
+        &fixture,
+        &JournalSeed {
+            id: &op_id,
+            kind: "apply",
+            skill_id: &record.id,
+            agent_id: "pi",
+            config_root: &preview.config_root,
+            target_name: &record.name,
+            target_path: &preview.target_path,
+            mode: "symlink",
+            skill_revision: record.revision,
+            content_digest: &record.content_digest,
+        },
+    );
+
+    let listed = list_skill_deploy_recoveries(&fixture.library, &fixture.storage).expect("list");
+    assert_eq!(
+        listed[0].classification,
+        SkillDeployRecoveryClassification::Conflict
+    );
+    assert!(!listed[0].can_finish);
+    assert!(listed[0].can_dismiss);
+
+    let error = finish_skill_deploy_recovery(
+        &fixture.library,
+        &fixture.storage,
+        SkillDeployRecoveryAction {
+            id: op_id.clone(),
+            expected_classification: SkillDeployRecoveryClassification::Conflict,
+        },
+    )
+    .expect_err("finish conflict");
+    assert_eq!(error, SkillError::TargetConflict);
+    assert!(target.join("foreign.txt").exists());
+
+    dismiss_skill_deploy_recovery(
+        &fixture.library,
+        &fixture.storage,
+        SkillDeployRecoveryAction {
+            id: op_id,
+            expected_classification: SkillDeployRecoveryClassification::Conflict,
+        },
+    )
+    .expect("dismiss");
+    assert!(target.join("foreign.txt").exists());
+    assert!(
+        list_skill_deploy_recoveries(&fixture.library, &fixture.storage)
+            .expect("list")
+            .is_empty()
+    );
+}
+
+#[test]
+fn dismiss_refuses_needs_record_inconsistency() {
+    let fixture = Fixture::new();
+    let record = fixture.import("no-dismiss");
+    let preview = fixture
+        .preview(SkillDeployAgent::Pi, &record.id)
+        .expect("preview");
+    let target = fixture.target(SkillDeployAgent::Pi, &record.name);
+    fs::create_dir_all(target.parent().expect("parent")).expect("skills dir");
+    #[cfg(unix)]
+    std::os::unix::fs::symlink(fixture.library.root().join(&record.id), &target).expect("symlink");
+    #[cfg(windows)]
+    std::os::windows::fs::symlink_dir(fixture.library.root().join(&record.id), &target)
+        .expect("symlink");
+    let op_id = "d".repeat(32);
+    insert_journal(
+        &fixture,
+        &JournalSeed {
+            id: &op_id,
+            kind: "apply",
+            skill_id: &record.id,
+            agent_id: "pi",
+            config_root: &preview.config_root,
+            target_name: &record.name,
+            target_path: &preview.target_path,
+            mode: "symlink",
+            skill_revision: record.revision,
+            content_digest: &record.content_digest,
+        },
+    );
+
+    let error = dismiss_skill_deploy_recovery(
+        &fixture.library,
+        &fixture.storage,
+        SkillDeployRecoveryAction {
+            id: op_id,
+            expected_classification: SkillDeployRecoveryClassification::NeedsRecord,
+        },
+    )
+    .expect_err("dismiss");
+    assert_eq!(error, SkillError::RecoveryConflict);
+}
+
+#[test]
+fn delete_skill_refuses_while_journal_names_the_skill() {
+    let fixture = Fixture::new();
+    let record = fixture.import("journal-block");
+    let preview = fixture
+        .preview(SkillDeployAgent::Pi, &record.id)
+        .expect("preview");
+    let op_id = "e".repeat(32);
+    insert_journal(
+        &fixture,
+        &JournalSeed {
+            id: &op_id,
+            kind: "apply",
+            skill_id: &record.id,
+            agent_id: "pi",
+            config_root: &preview.config_root,
+            target_name: &record.name,
+            target_path: &preview.target_path,
+            mode: "symlink",
+            skill_revision: record.revision,
+            content_digest: &record.content_digest,
+        },
+    );
+
+    let error = delete_skill(
+        &fixture.library,
+        &fixture.storage,
+        DeleteSkillRequest {
+            id: record.id.clone(),
+            expected_revision: record.revision,
+        },
+    )
+    .expect_err("in use by journal");
+    assert_eq!(error, SkillError::SkillInUse);
+
+    dismiss_skill_deploy_recovery(
+        &fixture.library,
+        &fixture.storage,
+        SkillDeployRecoveryAction {
+            id: op_id,
+            expected_classification: SkillDeployRecoveryClassification::NotStarted,
+        },
+    )
+    .expect("dismiss empty");
+    delete_skill(
+        &fixture.library,
+        &fixture.storage,
+        DeleteSkillRequest {
+            id: record.id.clone(),
+            expected_revision: record.revision,
+        },
+    )
+    .expect("delete after dismiss");
+}
+
+#[test]
+fn changed_classification_refuses_finish() {
+    let fixture = Fixture::new();
+    let record = fixture.import("stale-class");
+    let preview = fixture
+        .preview(SkillDeployAgent::Pi, &record.id)
+        .expect("preview");
+    let op_id = "f".repeat(32);
+    insert_journal(
+        &fixture,
+        &JournalSeed {
+            id: &op_id,
+            kind: "apply",
+            skill_id: &record.id,
+            agent_id: "pi",
+            config_root: &preview.config_root,
+            target_name: &record.name,
+            target_path: &preview.target_path,
+            mode: "symlink",
+            skill_revision: record.revision,
+            content_digest: &record.content_digest,
+        },
+    );
+    let error = finish_skill_deploy_recovery(
+        &fixture.library,
+        &fixture.storage,
+        SkillDeployRecoveryAction {
+            id: op_id,
+            expected_classification: SkillDeployRecoveryClassification::Completed,
+        },
+    )
+    .expect_err("stale classification");
     assert_eq!(error, SkillError::TargetChanged);
 }

@@ -1001,6 +1001,9 @@ fn ipc_payloads_match_the_frontend_contract() {
         ),
         (SkillError::MarketplaceTimedOut, "marketplace_timed_out"),
         (SkillError::RevisionCheckFailed, "revision_check_failed"),
+        (SkillError::UpdatePlanStale, "update_plan_stale"),
+        (SkillError::UpdateStrategyInvalid, "update_strategy_invalid"),
+        (SkillError::RecoveryConflict, "recovery_conflict"),
     ];
     for (error, expected) in codes {
         assert_eq!(

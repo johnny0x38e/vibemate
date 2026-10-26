@@ -1503,6 +1503,64 @@ fn claude_code_skill_deployment_migration_keeps_existing_targets() {
 }
 
 #[test]
+fn skill_deploy_operation_migration_preserves_v33_rows() {
+    let directory = TestDirectory::new("skill-deploy-operation-upgrade");
+    let path = directory.path.join(DATABASE_FILE_NAME);
+    let skill_id = "0123456789abcdef0123456789abcdef";
+    let digest = "a".repeat(64);
+    {
+        let old = Storage::open_file(&path, &MIGRATIONS[..33]).expect("v33 database");
+        old.lock()
+            .unwrap()
+            .execute_batch(&format!(
+                "INSERT INTO skill(
+                    id, name, description, origin_path, content_digest,
+                    file_count, byte_size, revision, imported_at, updated_at
+                 ) VALUES(
+                    '{skill_id}', 'demo', 'A test skill.', '/tmp/demo', '{digest}',
+                    1, 1, 1, 1, 1
+                 );
+                 INSERT INTO skill_deployment VALUES(
+                    '{skill_id}', 'pi', '/home/test/.pi/agent', 'demo', 'symlink',
+                    1, '{digest}', 1
+                 );"
+            ))
+            .expect("seed v33 rows");
+    }
+
+    let storage = Storage::open_in_directory(&directory.path).expect("upgrade");
+    assert_eq!(
+        storage.schema_version().expect("schema version"),
+        latest_schema_version()
+    );
+    let connection = storage.lock().expect("lock");
+    let kept_skill: i64 = connection
+        .query_row("SELECT COUNT(*) FROM skill_deployment", [], |row| {
+            row.get(0)
+        })
+        .expect("skill deployment");
+    assert_eq!(kept_skill, 1);
+    let empty: i64 = connection
+        .query_row("SELECT COUNT(*) FROM skill_deploy_operation", [], |row| {
+            row.get(0)
+        })
+        .expect("operations");
+    assert_eq!(empty, 0);
+    connection
+        .execute(
+            "INSERT INTO skill_deploy_operation(
+                id, kind, state, skill_id, agent_id, config_root, target_name,
+                target_path, mode, skill_revision, content_digest, created_at, updated_at
+             ) VALUES(
+                ?1, 'apply', 'prepared', ?2, 'pi', '/home/test/.pi/agent', 'demo',
+                '/home/test/.pi/agent/skills/demo', 'symlink', 1, ?3, 1, 1
+             )",
+            rusqlite::params![skill_id, skill_id, digest],
+        )
+        .expect("insert operation");
+}
+
+#[test]
 fn shipped_migrations_are_numbered_consecutively_from_one() {
     for (index, migration) in MIGRATIONS.iter().enumerate() {
         let expected = u32::try_from(index + 1).expect("migration count fits in u32");

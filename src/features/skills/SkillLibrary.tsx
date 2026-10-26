@@ -32,6 +32,7 @@ import {
 import { SkillDetail } from "./SkillDetail";
 import { SkillInstallDialog } from "./SkillInstallDialog";
 import { SkillMarketplaceDialog } from "./SkillMarketplaceDialog";
+import { SkillRecoveryPanel } from "./SkillRecoveryPanel";
 import { skillSource } from "./skillSource";
 import buttons from "../../components/actionButtons.module.css";
 import dialog from "./SkillDeleteDialog.module.css";
@@ -666,6 +667,7 @@ export function SkillLibrary({
                             )}
                         </div>
                     )}
+                    <SkillRecoveryPanel />
                     {list.kind === "loading" && (
                         <p role="status">{t("skills.loading")}</p>
                     )}

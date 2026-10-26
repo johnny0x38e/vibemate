@@ -34,7 +34,24 @@
             "preview": "请在桌面应用中查看此数量。",
             "unavailable": "无法读取",
             "retry": "重试",
-            "retryLabel": "重试{{name}}"
+            "retryLabel": "重试{{name}}",
+            "recovery": {
+                "title": "未完成的操作",
+                "description": "中断的 Agent 配置、Skill 部署或 MCP 写入需要显式核对。请打开对应模块完成或忽略；此处不会重放任何写入。",
+                "loading": "正在检查未完成的操作…",
+                "error": "无法列出未完成的操作。",
+                "rowSummary": "{{domain}} · {{subject}} · {{detail}}",
+                "domains": {
+                    "agentConfig": "Agent 配置",
+                    "skillDeploy": "Skill 部署",
+                    "mcp": "MCP 注册"
+                },
+                "open": {
+                    "agents": "打开 Agents",
+                    "skills": "打开 Skills",
+                    "mcp": "打开 MCP"
+                }
+            }
         }
     },
     "settings": {
@@ -497,9 +514,9 @@
             }
         },
         "grokPreview": {
-            "open": "预览“{{name}}”部署到 Grok Build",
+            "open": "管理 Grok Build · {{name}}",
             "title": "Grok Build MCP 预览 · {{name}}",
-            "readOnly": "此预览只读。Grok 部署功能尚未提供；不会写入配置或启动服务器。",
+            "readOnly": "请使用 Grok 注册管理审阅并确认文件更改。此处不会启动或联系服务器。",
             "loading": "正在读取 Grok Build 目标配置…",
             "reload": "重新加载定义",
             "summary": "拟新增的 Grok Build 注册",
@@ -663,7 +680,92 @@
             "deleting": "正在删除…",
             "done": "已删除“{{name}}”。",
             "cleanupPending": "已删除，凭据待清理。请重试清理。",
-            "cleanup": "重试已删除定义的凭据清理"
+            "cleanup": "重试已删除定义的凭据清理",
+            "checkingReferences": "正在检查 Pi 与 Grok Build 注册…"
+        },
+        "grok": {
+            "manage": {
+                "open": "管理 Grok Build · {{name}}",
+                "title": "Grok Build 注册 · {{name}}",
+                "description": "审阅并确认 Grok Build 用户级 MCP 文件的变更。此处任何操作都不会启动或联系服务器。",
+                "review": "待确认的条目变更",
+                "action": "操作",
+                "removed": "移除条目",
+                "preserve": "仅更改此 mcp_servers 条目。其他服务器、模型表与 disabled_mcp_servers 会保留。不会接管或覆盖用户自有条目及被外部改动的受管条目。启停不会清除个人禁用列表。",
+                "credentials": "部署/更新会在 Rust 中解析已保存的值。Grok 需要明文写入私有 config.toml；备份与保留结果副本也可能包含它们。此处始终脱敏。含 ${…} 的动态值会被拒绝。",
+                "historicalCredentials": "恢复此结果可能带回旧的明文凭据。只恢复此条目，不回滚其它服务器或整个历史文件。",
+                "entryOnly": "仅展示此条目的变更前后，环境变量和请求头值已脱敏；不包含其它原生配置内容。",
+                "registration": "当前 Grok Build 注册",
+                "diskState": "磁盘观察状态",
+                "revision": "定义版本",
+                "revisionValue": "已写入 {{written}} · 中央 {{central}}",
+                "otherRoot": "还注册在 {{path}}。删除中央定义前请切换 GROK_HOME 并在该处撤销。",
+                "update": "审阅更新",
+                "deploy": "审阅部署",
+                "confirm": "确认修改文件",
+                "cancelReview": "返回注册状态",
+                "refresh": "刷新注册状态",
+                "loading": "正在读取 Grok Build 注册与历史…",
+                "writing": "正在应用已审阅的变更…",
+                "written": "已写入更改。请在 Grok 中刷新 /mcps 或开启新会话；注册并不表示服务器已生效或已连接。",
+                "recorded": "观察结果已记录，未重新写入原生文件。",
+                "registeredSummary": "已记录 Grok Build 注册",
+                "summaryUnknown": "未检查 Grok Build 注册",
+                "deleteReference": "Grok Build 引用：{{path}} · {{state}}。删除此定义前请先撤销。",
+                "resolveReferences": "管理 Grok Build 引用"
+            },
+            "actions": {
+                "deploy": "部署／更新",
+                "enable": "在 Grok Build 中启用",
+                "disable": "在 Grok Build 中停用",
+                "revoke": "从 Grok Build 撤销",
+                "restore": "恢复条目"
+            },
+            "states": {
+                "written": "与受管条目一致",
+                "modified": "已被外部修改",
+                "missing": "受管条目缺失",
+                "unreadable": "无法读取原生状态",
+                "unregistered": "未在此 Grok 目录注册"
+            },
+            "history": {
+                "title": "条目历史",
+                "description": "此定义在当前 Grok Build 目录的成功操作结果。恢复时保留其它当前内容，但可能带回旧的凭据值。",
+                "empty": "此 Grok 目录尚无保留的更改。",
+                "restoreLabel": "审阅条目结果 {{id}}"
+            },
+            "recovery": {
+                "title": "中断的 Grok Build 更改",
+                "pending": "{{name}} 存在中断更改，会阻止继续写入 Grok。请在 Grok 注册管理中查看磁盘观察结果。",
+                "review": "审阅中断状态",
+                "confirm": "确认观察结果",
+                "noReplay": "此操作只核对操作日志和所有权，不重放中断的写入，也不联系服务器。",
+                "before": "文件与记录的变更前状态一致。确认后放弃未完成意图，保留原所有权。",
+                "intended": "文件与预期结果一致。确认后校验保留副本，并补全操作日志和所有权。",
+                "conflict": "文件与变更前或预期状态均不一致，不会重放写入。请处理外部变更后刷新，不要删除未完成记录。",
+                "unreadable": "无法安全观察文件。请检查路径、文件类型与权限后刷新。"
+            },
+            "errors": {
+                "invalid_request": "Grok Build 操作选择无效。请重新加载定义后重试。",
+                "storage_unavailable": "本地存储不可用。请重启 vibemate，并在重试前检查注册状态。",
+                "definition_changed": "中央定义已变更或不可用。请重新加载定义后再次审阅。",
+                "target_unavailable": "无法安全修改 Grok Build 目标。请检查 GROK_HOME、权限、大小和文件类型；不会替换符号链接。",
+                "invalid_config": "现有 config.toml 或其 MCP 容器无效。请在 vibemate 外修复后再刷新；未做任何替换。",
+                "name_conflict": "已有用户条目占用此精确服务名。vibemate 不会接管或覆盖它。",
+                "ownership_conflict": "受管条目已变更、缺失或名称不同。请先还原其准确受管内容；缺失条目也可明确撤销。若中央标识符改名，请先撤销旧注册再部署。",
+                "plan_stale": "已审阅状态发生变化。请刷新并重新审阅后确认。",
+                "credential_unavailable": "已保存的系统值不可用，或不能作为 Grok 字面量使用（含 ${…} 展开）。请解锁凭据库或替换中央值后重新审阅。",
+                "recovery_required": "有未完成的 Grok Build 变更需要明确核对。继续写入前，请刷新并审阅其观察状态。",
+                "snapshot_unavailable": "所需结果副本缺失、损坏，或不属于此定义／目录，恢复仍被阻止；不会改用其它操作的备份。",
+                "write_failed": "写入器未确认成功。请刷新注册状态，检查是否有未完成操作后再重试。",
+                "outcome_unknown": "结果尚不确定。请刷新注册状态并检查未完成变更，不要直接重复写入。",
+                "definition_in_use": "此定义仍有 Grok Build 注册或未完成变更。请先核对并撤销引用。",
+                "desktop_required": "请使用 vibemate 桌面应用管理真实的 Grok Build 注册。",
+                "invalid_response": "响应未通过校验，已被丢弃。请刷新检查实际结果后再重试。",
+                "unsupported_server_name": "Grok 无法使用此前缀。请使用以字母或下划线开头、不含双下划线或尾部下划线的标识符。",
+                "dynamic_value_unsupported": "公开字段含有 ${…} 插值。Grok 会在运行时展开它；目前只支持字面量字段。",
+                "path_semantics_unverified": "相对工作目录与前导 ~/ 路径尚未对 Grok 核实。请使用绝对工作目录与字面量可执行文件/参数，或省略工作目录。"
+            }
         }
     },
     "agents": {
@@ -799,7 +901,6 @@
             "textDiff": "差异",
             "textNoDiff": "没有行级差异。",
             "textPreviewMode": "浏览器预览无法读取配置文件，请在 vibemate 桌面应用中查看。",
-
             "fieldOwnerRef": "记录的所有者引用"
         },
         "directory": "用户配置路径：{{path}}",
@@ -1147,7 +1248,7 @@
             "conflictHint": "请先打开该文件决定保留哪份内容，再点「重新检查」并重新预览。vibemate 不会覆盖写入后被改动的文件。",
             "keyNotice": "恢复后的文件会回到这次写入之前的内容，其中可能包含当时的明文 API 密钥。系统凭据存储不会改动。",
             "provider": "服务商：{{name}}",
-            "providerRemoved": "服务商：{{id}}（已不在库中）",
+            "providerRemoved": "服务商已删除",
             "restoredOwnerNamed": "要恢复的内容由服务商 {{name}} 写入。",
             "restoredOwnerRemoved": "要恢复的内容由 {{id}} 写入，该服务商已不在库中。",
             "restoredOwnerUnknown": "要恢复的内容不是 vibemate 写的：可能是手工或其它工具改的。",
@@ -1250,7 +1351,6 @@
                 }
             },
             "fieldProvider": "服务商",
-            "providerRemoved": "服务商已删除",
             "providerRemovedNote": "（已不在库中）"
         },
         "segments": {
@@ -1283,9 +1383,12 @@
         },
         "mcpPanel": {
             "empty": "当前目录没有受管 Pi MCP 条目。",
+            "emptyGrok": "当前目录没有受管 Grok Build MCP 条目。",
             "unsupported": "尚未实现此 Agent 的原生 MCP 部署，不会据此显示已连接或已支持。",
             "readOnly": "此处只读展示 Pi 用户级注册，不检查运行时连接。写入后需要在 Pi 中 /reload；项目覆盖与运行选项可能优先生效。",
+            "readOnlyGrok": "此处只读展示 Grok Build 用户级注册，不检查运行时连接。写入后请刷新 /mcps 或开启新会话；项目、策略与兼容来源可能优先生效。个人禁用列表另行观察。",
             "listLabel": "受管 Pi MCP 注册",
+            "listLabelGrok": "受管 Grok Build MCP 注册",
             "row": "{{name}} · {{state}} · {{enabled}}",
             "openMcp": "打开 MCP 管理"
         },
@@ -1351,6 +1454,32 @@
         "reload": "重新载入列表",
         "reloadUnknown": "结果未知。请重新载入列表后再做其他修改。",
         "notDeployed": "打开技能详情页即可部署到 Claude Code、Pi 或 Grok Build。",
+        "recovery": {
+            "title": "未完成的技能部署",
+            "description": "这些操作在所有权与文件系统达成一致之前被中断。完成操作只修复所有权记录；忽略会清除日志，不会改写 Agent 文件。",
+            "loading": "正在检查未完成的部署…",
+            "finish": "完成",
+            "finishing": "正在完成…",
+            "dismiss": "忽略",
+            "dismissing": "正在忽略…",
+            "reloadHint": "请先重新加载，再尝试其他恢复操作。",
+            "rowSummary": "{{kind}} · {{skill}} · {{agent}} · {{classification}} · {{state}}",
+            "kinds": {
+                "apply": "部署",
+                "disable": "移除部署"
+            },
+            "states": {
+                "prepared": "已准备",
+                "unknown": "结果未知"
+            },
+            "classifications": {
+                "completed": "已完成",
+                "not_started": "尚未开始",
+                "needs_record": "需要补写所有权",
+                "needs_record_clear": "需要清除所有权",
+                "conflict": "冲突"
+            }
+        },
         "deploy": {
             "title": "部署到 Agent",
             "agent": "Agent",
@@ -1498,7 +1627,7 @@
             "invalid_stored_skill": "已保存的技能元数据无效，未做修改。",
             "outcome_unknown": "结果未知。请重新载入列表后再做其他修改。",
             "operation_failed": "技能库暂时不可用。",
-            "skill_in_use": "该技能仍部署在某个 Agent 上，请先移除部署。",
+            "skill_in_use": "该技能仍部署在某个 Agent 上，或仍有未完成的部署操作。请先完成或移除后再删除。",
             "agent_location_unavailable": "无法解析 Agent 目录。",
             "target_conflict": "部署目标已被非托管路径占用。",
             "target_changed": "预览之后目标已变化，请重新载入后再试。",
@@ -1512,6 +1641,7 @@
             "revision_check_failed": "无法解析远端 Git 修订。",
             "update_plan_stale": "更新预览已过期，请重新预览后再应用。",
             "update_strategy_invalid": "当前比较结果不允许该更新策略。",
+            "recovery_conflict": "当前状态不允许该恢复操作。请先完成所有权修复，或重新载入。",
             "desktop_required": "该操作需要桌面应用。",
             "invalid_response": "桌面应用返回了意外的响应。"
         },

@@ -15,11 +15,17 @@ import {
     readPiMcpState,
     type PiMcpState,
 } from "../../lib/desktop/piMcp";
+import { readGrokMcpState } from "../../lib/desktop/grokMcp";
 import { emptyPiMcpState, piMcpDeployment } from "../../test/piMcpFixtures";
+import { emptyGrokMcpState } from "../../test/grokMcpFixtures";
 import { AgentMcpPanel } from "./AgentMcpPanel";
 vi.mock(import("../../lib/desktop/piMcp"), async (original) => ({
     ...(await original()),
     readPiMcpState: vi.fn(),
+}));
+vi.mock(import("../../lib/desktop/grokMcp"), async (original) => ({
+    ...(await original()),
+    readGrokMcpState: vi.fn(),
 }));
 beforeEach(() => {
     vi.mocked(readPiMcpState)
@@ -28,6 +34,9 @@ beforeEach(() => {
             ...emptyPiMcpState,
             deployments: [piMcpDeployment],
         });
+    vi.mocked(readGrokMcpState)
+        .mockReset()
+        .mockResolvedValue(emptyGrokMcpState);
 });
 afterEach(cleanup);
 

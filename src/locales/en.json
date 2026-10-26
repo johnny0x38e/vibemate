@@ -34,7 +34,24 @@
             "preview": "Open the desktop app to read this count.",
             "unavailable": "Unavailable",
             "retry": "Retry",
-            "retryLabel": "Retry {{name}}"
+            "retryLabel": "Retry {{name}}",
+            "recovery": {
+                "title": "Unfinished operations",
+                "description": "Interrupted Agent configuration, Skill deployment, or MCP writes need an explicit review. Open the owning module to finish or dismiss; nothing is replayed from here.",
+                "loading": "Checking for unfinished operations…",
+                "error": "Unfinished operations could not be listed.",
+                "rowSummary": "{{domain}} · {{subject}} · {{detail}}",
+                "domains": {
+                    "agentConfig": "Agent configuration",
+                    "skillDeploy": "Skill deployment",
+                    "mcp": "MCP registration"
+                },
+                "open": {
+                    "agents": "Open Agents",
+                    "skills": "Open Skills",
+                    "mcp": "Open MCP"
+                }
+            }
         }
     },
     "settings": {
@@ -497,9 +514,9 @@
             }
         },
         "grokPreview": {
-            "open": "Preview “{{name}}” for Grok Build",
+            "open": "Manage Grok Build · {{name}}",
             "title": "Grok Build MCP preview · {{name}}",
-            "readOnly": "This preview is read-only. Grok deployment is not available yet; nothing is written or started.",
+            "readOnly": "Use Grok registration management to review and confirm file changes. No action starts or contacts a server.",
             "loading": "Reading the Grok Build target…",
             "reload": "Reload definitions",
             "summary": "Proposed Grok Build registration",
@@ -663,7 +680,92 @@
             "deleting": "Deleting…",
             "done": "Deleted “{{name}}”.",
             "cleanupPending": "Deleted; credentials remain. Retry cleanup.",
-            "cleanup": "Retry deleted credential cleanup"
+            "cleanup": "Retry deleted credential cleanup",
+            "checkingReferences": "Checking Pi and Grok Build registrations…"
+        },
+        "grok": {
+            "manage": {
+                "open": "Manage Grok Build · {{name}}",
+                "title": "Grok Build registration · {{name}}",
+                "description": "Review and confirm changes to the user-level Grok Build MCP file. No action here starts or contacts a server.",
+                "review": "Reviewed entry change",
+                "action": "Action",
+                "removed": "Entry removed",
+                "preserve": "Only this mcp_servers entry changes. Other servers, model tables and disabled_mcp_servers are preserved. Existing user entries and externally modified managed entries are never adopted or overwritten. Enable/disable does not clear the personal disable list.",
+                "credentials": "Deploy/update resolves saved values in Rust. Grok needs plaintext values in its private config.toml; backups and retained result copies can also contain them. Values stay masked here. Dynamic ${…} values are refused.",
+                "historicalCredentials": "Restoring this result can bring back old plaintext credentials. It restores this entry only, not unrelated servers or the entire historical file.",
+                "entryOnly": "Before and after for this entry only. Environment/header values are masked; unrelated native content is not included.",
+                "registration": "Current Grok Build registration",
+                "diskState": "Observed disk state",
+                "revision": "Definition revision",
+                "revisionValue": "Written {{written}} · central {{central}}",
+                "otherRoot": "Also registered under {{path}}. Switch GROK_HOME and revoke there before deleting the central definition.",
+                "update": "Review update",
+                "deploy": "Review deployment",
+                "confirm": "Confirm file change",
+                "cancelReview": "Back to registration",
+                "refresh": "Refresh registration",
+                "loading": "Reading Grok Build registration and history…",
+                "writing": "Applying the reviewed change…",
+                "written": "Change written. Refresh /mcps in Grok or start a new session; registration is not proof of an effective or connected server.",
+                "recorded": "Observation recorded. No native file was rewritten.",
+                "registeredSummary": "Grok Build registration recorded",
+                "summaryUnknown": "Grok Build registration not checked",
+                "deleteReference": "Grok Build reference: {{path}} · {{state}}. Revoke it before deleting this definition.",
+                "resolveReferences": "Manage Grok Build references"
+            },
+            "actions": {
+                "deploy": "Deploy/update",
+                "enable": "Enable in Grok Build",
+                "disable": "Disable in Grok Build",
+                "revoke": "Revoke from Grok Build",
+                "restore": "Restore entry"
+            },
+            "states": {
+                "written": "Matches the managed entry",
+                "modified": "Changed outside vibemate",
+                "missing": "Managed entry missing",
+                "unreadable": "Native state unavailable",
+                "unregistered": "Not registered in this Grok directory"
+            },
+            "history": {
+                "title": "Entry history",
+                "description": "Successful results for this definition and Grok Build directory. Restore preserves unrelated current content; old credential values may return.",
+                "empty": "No retained changes in this Grok directory.",
+                "restoreLabel": "Review entry result {{id}}"
+            },
+            "recovery": {
+                "title": "Interrupted Grok Build change",
+                "pending": "An interrupted change for {{name}} blocks further Grok writes. Review its disk observation in Grok registration management.",
+                "review": "Review interruption",
+                "confirm": "Confirm observed state",
+                "noReplay": "This only reconciles the operation journal and ownership. It does not replay the interrupted write or contact a server.",
+                "before": "The file matches the recorded before-state. Confirming abandons the pending intent and preserves the previous ownership.",
+                "intended": "The file matches the intended result. Confirming verifies retained copies and completes its journal and ownership.",
+                "conflict": "The file matches neither recorded state. Nothing will be replayed. Resolve the external changes, then refresh; do not delete the pending record.",
+                "unreadable": "The file cannot be safely observed. Check its path, type and permissions, then refresh."
+            },
+            "errors": {
+                "invalid_request": "Invalid Grok Build selection. Reload the definitions and try again.",
+                "storage_unavailable": "Local storage is unavailable. Restart vibemate and inspect the registration before retrying.",
+                "definition_changed": "The central definition changed or is unavailable. Reload definitions before reviewing again.",
+                "target_unavailable": "The Grok Build target cannot be safely changed. Check GROK_HOME, permissions, size and file type. Symbolic links are not replaced.",
+                "invalid_config": "The existing config.toml or its MCP containers are invalid. Fix them outside vibemate, then refresh; nothing was replaced.",
+                "name_conflict": "An existing user entry owns this exact server name. vibemate will not adopt or overwrite it.",
+                "ownership_conflict": "The managed entry changed, disappeared or has a different name. Restore its exact managed contents first, or explicitly revoke a missing entry. For a renamed central identifier, revoke the old registration before deploying again.",
+                "plan_stale": "The reviewed state changed. Refresh and review the action again before confirming.",
+                "credential_unavailable": "Saved OS values are unavailable or cannot be used as literal Grok values (including ${…} expansion). Unlock the credential store or replace the central values, then review again.",
+                "recovery_required": "An interrupted Grok Build change needs explicit reconciliation. Refresh and review its observed state before any further writes.",
+                "snapshot_unavailable": "A required result copy is missing, corrupt or outside this definition/directory. Restore/recovery remains blocked; no fallback to another operation's backup is allowed.",
+                "write_failed": "The writer did not confirm a successful change. Refresh the registration and check any pending interruption before retrying.",
+                "outcome_unknown": "The result is uncertain. Refresh the registration and inspect any interrupted change; do not blindly repeat the write.",
+                "definition_in_use": "This definition still has a Grok Build registration or pending change. Reconcile and revoke its references first.",
+                "desktop_required": "Use the vibemate desktop app to manage real Grok Build registrations.",
+                "invalid_response": "The response was discarded because it could not be validated. Refresh to inspect the actual result before retrying.",
+                "unsupported_server_name": "Grok cannot use this tool prefix. Use an identifier starting with a letter or underscore, with no double underscore or trailing underscore.",
+                "dynamic_value_unsupported": "A public field contains ${…} interpolation. Grok would expand it at runtime; only literal fields are supported.",
+                "path_semantics_unverified": "Relative working directories and leading ~/ paths are not yet verified for Grok. Use an absolute working directory and literal executable/arguments, or omit the working directory."
+            }
         }
     },
     "agents": {
@@ -799,7 +901,6 @@
             "textDiff": "Differences",
             "textNoDiff": "No line differences.",
             "textPreviewMode": "The browser preview cannot read configuration files. Open the vibemate desktop app.",
-
             "fieldOwnerRef": "Recorded owner reference"
         },
         "directory": "User configuration directory: {{path}}",
@@ -1147,7 +1248,7 @@
             "conflictHint": "Open the file and decide what to keep, then recheck and preview again. vibemate never overwrites a file that changed after its write.",
             "keyNotice": "The restored file gets back whatever it held before this write, including a plain text API key if it contained one. OS credential storage is not changed.",
             "provider": "Provider: {{name}}",
-            "providerRemoved": "Provider: {{id}} (no longer in the library)",
+            "providerRemoved": "Removed provider",
             "restoredOwnerNamed": "The content that comes back was written by the Provider {{name}}.",
             "restoredOwnerRemoved": "The content that comes back was written for {{id}}, a Provider no longer in the library.",
             "restoredOwnerUnknown": "The content that comes back was not written by vibemate: it was edited by hand or by another tool.",
@@ -1250,7 +1351,6 @@
                 }
             },
             "fieldProvider": "Provider",
-            "providerRemoved": "Removed provider",
             "providerRemovedNote": "(no longer in the library)"
         },
         "segments": {
@@ -1283,9 +1383,12 @@
         },
         "mcpPanel": {
             "empty": "No managed Pi MCP entries in this directory.",
+            "emptyGrok": "No managed Grok Build MCP entries in this directory.",
             "unsupported": "Native MCP deployment for this Agent is not implemented. No connected or supported state is inferred.",
             "readOnly": "Read-only user-level Pi registrations, not a live connection check. Pi needs /reload after a write; project overrides and runtime options may take precedence.",
+            "readOnlyGrok": "Read-only user-level Grok Build registrations, not a live connection check. Refresh /mcps or start a new session after a write; project, policy and compatibility sources may take precedence. The personal disable list is observed separately.",
             "listLabel": "Managed Pi MCP registrations",
+            "listLabelGrok": "Managed Grok Build MCP registrations",
             "row": "{{name}} · {{state}} · {{enabled}}",
             "openMcp": "Open MCP management"
         },
@@ -1351,6 +1454,32 @@
         "reload": "Reload list",
         "reloadUnknown": "The result is unknown. Reload the list before another change.",
         "notDeployed": "Open a skill's detail page to deploy it to Claude Code, Pi or Grok Build.",
+        "recovery": {
+            "title": "Unfinished skill deployments",
+            "description": "These operations were interrupted before ownership and the filesystem agreed. Finish repairs ownership only; Dismiss clears the journal without rewriting agent files.",
+            "loading": "Checking for unfinished deployments…",
+            "finish": "Finish",
+            "finishing": "Finishing…",
+            "dismiss": "Dismiss",
+            "dismissing": "Dismissing…",
+            "reloadHint": "Reload before trying another recovery action.",
+            "rowSummary": "{{kind}} · {{skill}} · {{agent}} · {{classification}} · {{state}}",
+            "kinds": {
+                "apply": "Deploy",
+                "disable": "Remove deployment"
+            },
+            "states": {
+                "prepared": "prepared",
+                "unknown": "outcome unknown"
+            },
+            "classifications": {
+                "completed": "already complete",
+                "not_started": "not started",
+                "needs_record": "needs ownership record",
+                "needs_record_clear": "needs ownership clear",
+                "conflict": "conflict"
+            }
+        },
         "deploy": {
             "title": "Deploy to an agent",
             "agent": "Agent",
@@ -1498,7 +1627,7 @@
             "invalid_stored_skill": "Stored skill metadata is invalid and was left unchanged.",
             "outcome_unknown": "The result is unknown. Reload the list before another change.",
             "operation_failed": "The skill library is temporarily unavailable.",
-            "skill_in_use": "This skill is still deployed to an agent. Remove the deployment first.",
+            "skill_in_use": "This skill is still deployed to an agent or has an unfinished deployment. Finish or remove that first.",
             "agent_location_unavailable": "The agent directory could not be resolved.",
             "target_conflict": "An unmanaged path already occupies the deploy target.",
             "target_changed": "The deploy target changed after the preview. Reload and try again.",
@@ -1512,6 +1641,7 @@
             "revision_check_failed": "The remote Git revision could not be resolved.",
             "update_plan_stale": "The update preview is out of date. Preview again before applying.",
             "update_strategy_invalid": "That update strategy is not valid for the current comparison.",
+            "recovery_conflict": "That recovery action is not allowed for the current state. Finish the ownership repair first, or reload.",
             "desktop_required": "This action needs the desktop app.",
             "invalid_response": "The desktop app returned an unexpected response."
         },

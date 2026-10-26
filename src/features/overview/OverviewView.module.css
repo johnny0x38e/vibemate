@@ -187,3 +187,59 @@
     outline: 2px solid var(--color-focus);
     outline-offset: 2px;
 }
+
+/* Unfinished write discovery sits above the five totals when rows exist. */
+.recovery {
+    display: grid;
+    gap: var(--space-sm);
+    margin: 0 0 var(--page-content-gap);
+}
+
+.recoveryTitle {
+    margin: 0;
+    font-size: 0.9375rem;
+    font-weight: 600;
+    line-height: 1.4;
+}
+
+.recoveryHint {
+    margin: 0;
+    color: var(--color-summary);
+    font-size: 0.8125rem;
+    line-height: 1.5;
+}
+
+.recoveryError {
+    margin: 0;
+    color: var(--color-danger);
+    font-size: 0.8125rem;
+    line-height: 1.5;
+}
+
+.recoveryList {
+    margin: 0;
+    padding: 0;
+    list-style: none;
+    display: grid;
+    gap: var(--space-sm);
+}
+
+.recoveryRow {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: flex-start;
+    justify-content: space-between;
+    gap: var(--space-sm);
+}
+
+.recoveryBody {
+    min-width: 0;
+    flex: 1 1 12rem;
+}
+
+.recoverySubject {
+    margin: 0;
+    font-size: 0.8125rem;
+    line-height: 1.5;
+    overflow-wrap: anywhere;
+}

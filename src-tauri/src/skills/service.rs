@@ -470,9 +470,12 @@ pub fn delete_skill(
     if request.expected_revision < 1 {
         return Err(SkillError::InvalidRequest);
     }
-    // Deployment relationships block deletion until the user revokes them; P35
-    // will add richer reference UI, but the files must not vanish while linked.
-    if super::deploy::skill_has_deployments(storage, &request.id)? {
+    // Deployment relationships and unfinished deploy journals block deletion
+    // until the user revokes or recovers them; the files must not vanish while
+    // linked or mid-write.
+    if super::deploy::skill_has_deployments(storage, &request.id)?
+        || super::deploy::skill_has_operations(storage, &request.id)?
+    {
         return Err(SkillError::SkillInUse);
     }
     let root = library.root();

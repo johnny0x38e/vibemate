@@ -659,6 +659,65 @@ const MIGRATIONS: &[Migration] = &[
         CREATE UNIQUE INDEX pi_mcp_one_pending_root ON pi_mcp_change(config_root) WHERE state='prepared';
         CREATE INDEX pi_mcp_history ON pi_mcp_change(config_root,definition_id,created_at DESC,id DESC);",
     },
+    Migration {
+        version: 33,
+        // Grok MCP owns exact server names under user-level config.toml. There is
+        // no Pi-style hyphen/underscore namespace; server_name is the unique key.
+        sql: "CREATE TABLE grok_mcp_deployment (
+            config_root TEXT NOT NULL CHECK(length(config_root) BETWEEN 1 AND 4096),
+            definition_id TEXT NOT NULL REFERENCES mcp_definition(id) ON DELETE RESTRICT,
+            server_name TEXT NOT NULL CHECK(length(server_name) BETWEEN 1 AND 64),
+            definition_revision INTEGER NOT NULL CHECK(definition_revision>=1),
+            entry_digest TEXT NOT NULL CHECK(length(entry_digest)=64 AND entry_digest NOT GLOB '*[^0-9a-f]*'),
+            generation TEXT NOT NULL CHECK(length(generation)=32 AND generation NOT GLOB '*[^0-9a-f]*'),
+            enabled INTEGER NOT NULL CHECK(enabled IN (0,1)),
+            PRIMARY KEY(config_root,definition_id),
+            UNIQUE(config_root,server_name)
+        ) STRICT, WITHOUT ROWID;
+        CREATE TABLE grok_mcp_change (
+            id TEXT PRIMARY KEY CHECK(length(id)=32 AND id NOT GLOB '*[^0-9a-f]*'),
+            config_root TEXT NOT NULL CHECK(length(config_root) BETWEEN 1 AND 4096),
+            definition_id TEXT NOT NULL CHECK(length(definition_id)=32),
+            server_name TEXT NOT NULL CHECK(length(server_name) BETWEEN 1 AND 64),
+            definition_revision INTEGER NOT NULL CHECK(definition_revision>=1),
+            action TEXT NOT NULL CHECK(action IN ('deploy','enable','disable','revoke','restore')),
+            state TEXT NOT NULL CHECK(state IN ('prepared','completed','aborted')),
+            before_digest TEXT CHECK(before_digest IS NULL OR length(before_digest)=64),
+            intended_digest TEXT CHECK(intended_digest IS NULL OR length(intended_digest)=64),
+            before_owner TEXT CHECK(before_owner IS NULL OR json_valid(before_owner)),
+            after_owner TEXT CHECK(after_owner IS NULL OR json_valid(after_owner)),
+            operation_id TEXT REFERENCES config_operation(id) ON DELETE RESTRICT,
+            created_at INTEGER NOT NULL CHECK(created_at>=0)
+        ) STRICT;
+        CREATE UNIQUE INDEX grok_mcp_one_pending_root ON grok_mcp_change(config_root) WHERE state='prepared';
+        CREATE INDEX grok_mcp_history ON grok_mcp_change(config_root,definition_id,created_at DESC,id DESC);",
+    },
+    Migration {
+        version: 34,
+        // P34: unfinished Skill deploy/disable journal. Rows survive crashes so
+        // recovery can classify the live target against ownership without
+        // replaying filesystem writes. mode is null only for malformed rows.
+        sql: "CREATE TABLE skill_deploy_operation (
+            id TEXT PRIMARY KEY CHECK(length(id)=32 AND id NOT GLOB '*[^0-9a-f]*'),
+            kind TEXT NOT NULL CHECK(kind IN ('apply','disable')),
+            state TEXT NOT NULL CHECK(state IN ('prepared','unknown')),
+            skill_id TEXT NOT NULL CHECK(length(skill_id)=32 AND skill_id NOT GLOB '*[^0-9a-f]*'),
+            agent_id TEXT NOT NULL CHECK(agent_id IN ('pi','grokBuild','claudeCode')),
+            config_root TEXT NOT NULL CHECK(length(config_root) BETWEEN 1 AND 4096),
+            target_name TEXT NOT NULL CHECK(length(target_name) BETWEEN 1 AND 64),
+            target_path TEXT NOT NULL CHECK(length(target_path) BETWEEN 1 AND 4096),
+            mode TEXT CHECK(mode IS NULL OR mode IN ('symlink','copy')),
+            skill_revision INTEGER NOT NULL CHECK(skill_revision >= 1),
+            content_digest TEXT NOT NULL
+                CHECK(length(content_digest)=64 AND content_digest NOT GLOB '*[^0-9a-f]*'),
+            created_at INTEGER NOT NULL CHECK(created_at >= 0),
+            updated_at INTEGER NOT NULL CHECK(updated_at >= 0)
+        ) STRICT;
+        CREATE INDEX skill_deploy_operation_skill
+            ON skill_deploy_operation(skill_id);
+        CREATE INDEX skill_deploy_operation_list
+            ON skill_deploy_operation(created_at ASC, id ASC);",
+    },
 ];
 
 /// Errors from opening or migrating the private database.

@@ -150,8 +150,10 @@ behavior. Inspect both locales/themes and long content at 720×560. This command
 needs no credential lock, process permission, capability or CSP expansion because
 it only reads the Rust-selected target and central metadata.
 
-The reviewed write/ownership/history/recovery/deletion workflow follows; do not
-expose a management or connected state before those behaviors exist.
+The reviewed write/ownership/history/recovery/deletion workflow is implemented
+in `mcp::grok_deployment` (schema v33, `OperationKind::GrokMcp`). Management UI
+replaces the preview-only dialog; do not claim connected or effective state from
+written registrations alone.
 
 ## Evidence and risks
 

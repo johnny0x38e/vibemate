@@ -23,14 +23,19 @@ import {
 } from "../../lib/desktop/mcp";
 import { McpView } from "./McpView";
 import {
-    GrokMcpPreviewError,
-    previewGrokMcpRegistration,
-    type GrokMcpPreview,
-} from "../../lib/desktop/grokMcpPreview";
-import { grokMcpPreview } from "../../test/grokMcpFixtures";
-vi.mock(import("../../lib/desktop/grokMcpPreview"), async (original) => ({
+    GrokMcpError,
+    applyGrokMcpChange,
+    readGrokMcpState,
+    readGrokMcpHistory,
+    previewGrokMcpChange,
+} from "../../lib/desktop/grokMcp";
+import { emptyGrokMcpState, grokMcpPlan } from "../../test/grokMcpFixtures";
+vi.mock(import("../../lib/desktop/grokMcp"), async (original) => ({
     ...(await original()),
-    previewGrokMcpRegistration: vi.fn(),
+    readGrokMcpState: vi.fn(),
+    readGrokMcpHistory: vi.fn(),
+    previewGrokMcpChange: vi.fn(),
+    applyGrokMcpChange: vi.fn(),
 }));
 import {
     PiMcpError,
@@ -105,12 +110,16 @@ async function setup(
     );
 }
 beforeEach(() => {
-    vi.mocked(previewGrokMcpRegistration)
+    vi.mocked(readGrokMcpState)
         .mockReset()
-        .mockResolvedValue({
-            ...grokMcpPreview,
-            proposal: { ...grokMcpPreview.proposal, revision: row.revision },
-        });
+        .mockResolvedValue(emptyGrokMcpState);
+    vi.mocked(readGrokMcpHistory)
+        .mockReset()
+        .mockResolvedValue({ items: [], nextCursor: null });
+    vi.mocked(previewGrokMcpChange)
+        .mockReset()
+        .mockResolvedValue({ ...grokMcpPlan, definitionId: row.id });
+    vi.mocked(applyGrokMcpChange).mockReset();
     vi.mocked(readPiMcpState).mockReset().mockResolvedValue(emptyPiMcpState);
     vi.mocked(readPiMcpHistory)
         .mockReset()
@@ -131,19 +140,16 @@ afterEach(() => {
     cleanup();
 });
 
-test("Grok preview uses the list revision and closes without central or Pi mutation", async () => {
+test("Grok management opens with the list revision and closes without central mutation", async () => {
     const homeRef = createRef<ModuleNavigationHandle>();
     await setup("en", homeRef);
     const trigger = await screen.findByRole("button", {
-        name: "Preview “Tools” for Grok Build",
+        name: "Manage Grok Build · Tools",
     });
     trigger.focus();
     fireEvent.click(trigger);
-    expect(await screen.findByText(grokMcpPreview.target.path)).toBeDefined();
-    expect(previewGrokMcpRegistration).toHaveBeenCalledWith(
-        row.id,
-        row.revision,
-    );
+    expect(await screen.findByText(emptyGrokMcpState.targetPath)).toBeDefined();
+    expect(readGrokMcpState).toHaveBeenCalledWith(row.id);
     expect(homeRef.current?.openHome()).toBe(false);
     fireEvent.click(screen.getByRole("button", { name: "Close" }));
     await waitFor(() => {
@@ -153,18 +159,21 @@ test("Grok preview uses the list revision and closes without central or Pi mutat
     expect(save).not.toHaveBeenCalled();
     expect(deleteMcpDefinition).not.toHaveBeenCalled();
     expect(applyPiMcpChange).not.toHaveBeenCalled();
-    expect(previewPiMcpChange).not.toHaveBeenCalled();
+    expect(applyGrokMcpChange).not.toHaveBeenCalled();
 });
 
 test("Grok stale revision reloads the list instead of editing or deploying", async () => {
-    vi.mocked(previewGrokMcpRegistration).mockRejectedValue(
-        new GrokMcpPreviewError("revision_conflict"),
+    vi.mocked(previewGrokMcpChange).mockRejectedValue(
+        new GrokMcpError("definition_changed"),
     );
     await setup();
     fireEvent.click(
         await screen.findByRole("button", {
-            name: "Preview “Tools” for Grok Build",
+            name: "Manage Grok Build · Tools",
         }),
+    );
+    fireEvent.click(
+        await screen.findByRole("button", { name: "Review deployment" }),
     );
     await screen.findByRole("alert");
     const before = list.mock.calls.length;
@@ -174,11 +183,12 @@ test("Grok stale revision reloads the list instead of editing or deploying", asy
         expect(list.mock.calls.length).toBeGreaterThan(before);
     });
     expect(save).not.toHaveBeenCalled();
+    expect(applyGrokMcpChange).not.toHaveBeenCalled();
 });
 
-test("hiding Grok preview invalidates its pending result and never reopens it", async () => {
-    let finish: (value: GrokMcpPreview) => void = () => {};
-    vi.mocked(previewGrokMcpRegistration).mockReturnValue(
+test("hiding Grok management invalidates its pending result and never reopens it", async () => {
+    let finish: (value: typeof emptyGrokMcpState) => void = () => {};
+    vi.mocked(readGrokMcpState).mockReturnValue(
         new Promise((resolve) => {
             finish = resolve;
         }),
@@ -194,18 +204,18 @@ test("hiding Grok preview invalidates its pending result and never reopens it", 
     const rendered = render(view(false));
     fireEvent.click(
         await screen.findByRole("button", {
-            name: "Preview “Tools” for Grok Build",
+            name: "Manage Grok Build · Tools",
         }),
     );
     expect(screen.getByRole("dialog")).toBeDefined();
     rendered.rerender(view(true));
     await act(async () => {
-        finish(grokMcpPreview);
+        finish(emptyGrokMcpState);
         await Promise.resolve();
     });
     rendered.rerender(view(false));
     expect(screen.queryByRole("dialog")).toBeNull();
-    expect(screen.queryByText(grokMcpPreview.target.path)).toBeNull();
+    expect(screen.queryByText(emptyGrokMcpState.targetPath)).toBeNull();
     expect(save).not.toHaveBeenCalled();
 });
 
@@ -266,7 +276,7 @@ test("Pi preview reads a list revision and reloads without mutating the definiti
     expect(clean).not.toHaveBeenCalled();
     expect(deleteMcpDefinition).not.toHaveBeenCalled();
     expect(
-        screen.getByText("Not registered in this Pi directory"),
+        screen.getByText(/Not registered in this Pi directory/),
     ).toBeDefined();
 });
 
@@ -370,7 +380,7 @@ test("central enablement does not imply Agent registration", async () => {
     await setup("en");
     await screen.findByText("Tools");
     expect(
-        screen.getByText("Not registered in this Pi directory"),
+        screen.getByText(/Not registered in this Pi directory/),
     ).toBeDefined();
     expect(screen.queryByText("mcp.list.registeredAgents")).toBeNull();
     expect(save).not.toHaveBeenCalled();
@@ -381,7 +391,7 @@ test("central enablement does not imply Agent registration", async () => {
         name: "Enable “Tools” definition",
     });
     expect(
-        screen.getByText("Not registered in this Pi directory"),
+        screen.getByText(/Not registered in this Pi directory/),
     ).toBeDefined();
     expect(clean).not.toHaveBeenCalled();
     expect(get).not.toHaveBeenCalled();

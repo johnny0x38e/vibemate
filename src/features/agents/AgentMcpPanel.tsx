@@ -2,11 +2,12 @@ import { useState, type JSX } from "react";
 import { useTranslation } from "react-i18next";
 import type { AgentId } from "../../lib/desktop/agents";
 import { usePiMcpRegistrations } from "../mcp/usePiMcpRegistrations";
+import { useGrokMcpRegistrations } from "../mcp/useGrokMcpRegistrations";
 import buttons from "../../components/actionButtons.module.css";
 import styles from "./AgentList.module.css";
 
-/** Read-only Pi registration observations. Unsupported Agents do not run IPC;
- * management stays in the central MCP module, not a second configuration editor. */
+/** Read-only managed MCP observations for Agents with a write adapter.
+ * Unsupported Agents do not run IPC; management stays in the central MCP module. */
 export function AgentMcpPanel({
     agentId,
     hidden,
@@ -18,39 +19,77 @@ export function AgentMcpPanel({
 }): JSX.Element {
     const { t } = useTranslation();
     const [epoch, setEpoch] = useState(0);
-    const result = usePiMcpRegistrations(hidden || agentId !== "pi", epoch);
+    const supported = agentId === "pi" || agentId === "grokBuild";
+    const pi = usePiMcpRegistrations(hidden || agentId !== "pi", epoch);
+    const grok = useGrokMcpRegistrations(
+        hidden || agentId !== "grokBuild",
+        epoch,
+    );
+    const result = agentId === "grokBuild" ? grok : pi;
     return (
         <div className={styles["skillPanel"]}>
-            {agentId !== "pi" ? (
+            {!supported ? (
                 <p className={styles["hint"]}>
                     {t("agents.mcpPanel.unsupported")}
                 </p>
             ) : (
                 <>
                     <p className={styles["hint"]}>
-                        {t("agents.mcpPanel.readOnly")}
+                        {t(
+                            agentId === "grokBuild"
+                                ? "agents.mcpPanel.readOnlyGrok"
+                                : "agents.mcpPanel.readOnly",
+                        )}
                     </p>
                     {result.kind === "loading" && (
-                        <p role="status">{t("mcp.pi.manage.loading")}</p>
+                        <p role="status">
+                            {t(
+                                agentId === "grokBuild"
+                                    ? "mcp.grok.manage.loading"
+                                    : "mcp.pi.manage.loading",
+                            )}
+                        </p>
                     )}
                     {result.kind === "error" && (
-                        <p role="alert">{t(`mcp.pi.errors.${result.code}`)}</p>
+                        <p role="alert">
+                            {agentId === "grokBuild"
+                                ? t(`mcp.grok.errors.${result.code}`)
+                                : t(
+                                      `mcp.pi.errors.${result.code as Exclude<typeof result.code, "unsupported_server_name" | "dynamic_value_unsupported" | "path_semantics_unverified">}`,
+                                  )}
+                        </p>
                     )}
                     {result.kind === "ready" && (
                         <>
                             {result.value.recovery && (
                                 <p role="status">
-                                    {t("mcp.pi.recovery.pending", {
-                                        name: result.value.recovery.serverName,
-                                    })}
+                                    {t(
+                                        agentId === "grokBuild"
+                                            ? "mcp.grok.recovery.pending"
+                                            : "mcp.pi.recovery.pending",
+                                        {
+                                            name: result.value.recovery
+                                                .serverName,
+                                        },
+                                    )}
                                 </p>
                             )}
                             {result.value.deployments.length === 0 ? (
-                                <p>{t("agents.mcpPanel.empty")}</p>
+                                <p>
+                                    {t(
+                                        agentId === "grokBuild"
+                                            ? "agents.mcpPanel.emptyGrok"
+                                            : "agents.mcpPanel.empty",
+                                    )}
+                                </p>
                             ) : (
                                 <ul
                                     className={styles["skillDeployList"]}
-                                    aria-label={t("agents.mcpPanel.listLabel")}
+                                    aria-label={t(
+                                        agentId === "grokBuild"
+                                            ? "agents.mcpPanel.listLabelGrok"
+                                            : "agents.mcpPanel.listLabel",
+                                    )}
                                 >
                                     {result.value.deployments.map((row) => (
                                         <li key={row.definitionId}>
@@ -62,12 +101,20 @@ export function AgentMcpPanel({
                                                 {t("agents.mcpPanel.row", {
                                                     name: row.displayName,
                                                     state: t(
-                                                        `mcp.pi.states.${row.state}`,
+                                                        agentId === "grokBuild"
+                                                            ? `mcp.grok.states.${row.state}`
+                                                            : `mcp.pi.states.${row.state}`,
                                                     ),
                                                     enabled: t(
                                                         row.ownership.enabled
-                                                            ? "mcp.piPreview.on"
-                                                            : "mcp.piPreview.off",
+                                                            ? agentId ===
+                                                              "grokBuild"
+                                                                ? "mcp.grokPreview.on"
+                                                                : "mcp.piPreview.on"
+                                                            : agentId ===
+                                                                "grokBuild"
+                                                              ? "mcp.grokPreview.off"
+                                                              : "mcp.piPreview.off",
                                                     ),
                                                 })}
                                             </p>
@@ -84,7 +131,11 @@ export function AgentMcpPanel({
                             setEpoch((value) => value + 1);
                         }}
                     >
-                        {t("mcp.pi.manage.refresh")}
+                        {t(
+                            agentId === "grokBuild"
+                                ? "mcp.grok.manage.refresh"
+                                : "mcp.pi.manage.refresh",
+                        )}
                     </button>
                 </>
             )}

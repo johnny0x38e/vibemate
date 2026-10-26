@@ -8,15 +8,35 @@ GitHub release notes are extracted from the matching version section only.
 
 ### Added
 
-- Read-only Grok Build MCP preview from the central list. Rust selects
-  `GROK_HOME|~/.grok/config.toml`, checks central revisions, bounded TOML, exact-name
-  conflicts and usable tool prefixes, and returns masked stdio/HTTP proposals
-  with separate personal disable-list reporting. The bilingual summary and
-  nested entry details support safe errors, retry/reload, focus return and late-read
-  protection; unknown response fields and unmasked values are discarded. Dynamic
-  public fields and unverified relative/home paths fail explicitly. Narrow-window
-  MCP rows keep names above their action group. Grok deployment is not available
-  yet: preview does not read OS credentials, change files or start/contact servers.
+- Overview RecoveryHub: aggregates unfinished Agent configuration history
+  (`requiresResolution`), Skill deploy journal rows, and Pi/Grok MCP
+  interruptions into one list that only navigates to the owning module. Browser
+  preview stays honest; a failed domain read does not hide the others. No write
+  is replayed from Overview. Maintainer desktop acceptance remains separate.
+
+- Skill deploy/disable interruption recovery (schema v34): apply and disable
+  journal a `prepared` row before the first filesystem change, clear it when
+  ownership and the target agree, and mark `unknown` only when rollback after a
+  write cannot be proven. The Skills page lists unfinished rows with live
+  classification (completed, not started, needs ownership record/clear, or
+  conflict), offers Finish/Dismiss without replaying writes, and refuses
+  central skill deletion while a journal row still names the skill.
+
+- Grok Build MCP registration management from the central list: review and
+  confirm deployment/update, native enable/disable, owned-entry revoke and
+  retained-entry restore against user-level `config.toml`. Rust selects
+  `GROK_HOME|~/.grok`, rechecks central/file digests, resolves OS values only for
+  deploy/update (refusing `${…}` expansion), mutates only `mcp_servers.<name>`
+  with `toml_edit`, and leaves model tables plus `disabled_mcp_servers`
+  untouched. Exact-name ownership (no Pi hyphen/underscore collision) refuses
+  foreign or externally modified entries; history restores only the selected
+  entry copy. Durable interruptions require explicit observed-state
+  reconciliation without replaying writes. Central deletion and Agent details
+  include Grok references alongside Pi. Nine focused Rust lifecycle tests cover
+  both transports, credential masking, name isolation, stale plans, restore
+  preservation, recovery abandon and dynamic-secret refusal. Desktop Tauri
+  preview IPC, native Grok connection and Windows/Linux acceptance remain
+  separate; no server is started by vibemate.
 
 - Reference-aware deletion for Providers, saved models and Skills. Provider and
   model dialogs list Pi provider bindings and Grok model aliases, classify them
@@ -44,7 +64,7 @@ GitHub release notes are extracted from the matching version section only.
   disable without reconnect, selected-result restore and revoke from native UI
   writes. No real configuration, Provider credentials, inference session or
   external service was used. OS-credential deployment and Windows/Linux
-  acceptance remain separate. Grok MCP deployment is not included.
+  acceptance remain separate.
 
 - Apply a reviewed Skill update after digest preview. Apply re-checks digests
   and refuses a stale plan; `keep` writes nothing; `replace` swaps the managed

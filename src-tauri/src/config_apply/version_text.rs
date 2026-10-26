@@ -189,9 +189,13 @@ pub(crate) fn render_text(
 /// Format used by one Agent adapter.
 pub(crate) fn format_for(kind: OperationKind) -> ConfigFormat {
     match kind {
-        OperationKind::ClaudeCodeSettings | OperationKind::PiSettings | OperationKind::PiMcp => {
-            ConfigFormat::Json
-        }
+        // Entry-level MCP summaries use JSON fragments for both Agents; the
+        // Grok native file remains TOML, but the reviewed entry shape matches
+        // the masked JSON already shown in the Grok MCP details dialog.
+        OperationKind::ClaudeCodeSettings
+        | OperationKind::PiSettings
+        | OperationKind::PiMcp
+        | OperationKind::GrokMcp => ConfigFormat::Json,
         OperationKind::GrokSettings => ConfigFormat::Toml,
     }
 }

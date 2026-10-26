@@ -367,3 +367,47 @@ pub(crate) async fn list_skill_deployments(
     .await
     .map_err(|_| crate::skills::SkillError::OperationFailed)?
 }
+
+/// List unfinished skill deploy/disable journal rows with live classifications.
+#[tauri::command]
+pub(crate) async fn list_skill_deploy_recoveries(
+    app: tauri::AppHandle,
+) -> Result<Vec<crate::skills::SkillDeployRecoveryItem>, crate::skills::SkillError> {
+    tauri::async_runtime::spawn_blocking(move || {
+        with_skill_library(&app, |library, storage| {
+            crate::skills::list_skill_deploy_recoveries(library, storage)
+        })
+    })
+    .await
+    .map_err(|_| crate::skills::SkillError::OperationFailed)?
+}
+
+/// Finish one unfinished skill deploy journal row after re-classification.
+#[tauri::command]
+pub(crate) async fn finish_skill_deploy_recovery(
+    app: tauri::AppHandle,
+    request: crate::skills::SkillDeployRecoveryAction,
+) -> Result<crate::skills::SkillDeployRecoveryResolved, crate::skills::SkillError> {
+    tauri::async_runtime::spawn_blocking(move || {
+        with_skill_library(&app, |library, storage| {
+            crate::skills::finish_skill_deploy_recovery(library, storage, request)
+        })
+    })
+    .await
+    .map_err(|_| crate::skills::SkillError::OperationFailed)?
+}
+
+/// Dismiss one unfinished skill deploy journal row without touching files.
+#[tauri::command]
+pub(crate) async fn dismiss_skill_deploy_recovery(
+    app: tauri::AppHandle,
+    request: crate::skills::SkillDeployRecoveryAction,
+) -> Result<crate::skills::SkillDeployRecoveryResolved, crate::skills::SkillError> {
+    tauri::async_runtime::spawn_blocking(move || {
+        with_skill_library(&app, |library, storage| {
+            crate::skills::dismiss_skill_deploy_recovery(library, storage, request)
+        })
+    })
+    .await
+    .map_err(|_| crate::skills::SkillError::OperationFailed)?
+}

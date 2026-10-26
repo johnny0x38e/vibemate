@@ -229,6 +229,8 @@ pub enum OperationKind {
     PiMcp,
     /// Grok Build model entry and default model selection in `config.toml`.
     GrokSettings,
+    /// Grok user-level MCP entries in `config.toml`, journaled apart from models.
+    GrokMcp,
 }
 
 impl OperationKind {
@@ -239,6 +241,7 @@ impl OperationKind {
             Self::PiSettings => "pi_settings",
             Self::PiMcp => "pi_mcp",
             Self::GrokSettings => "grok_settings",
+            Self::GrokMcp => "grok_mcp",
         }
     }
 
@@ -249,6 +252,7 @@ impl OperationKind {
             "pi_settings" => Some(Self::PiSettings),
             "pi_mcp" => Some(Self::PiMcp),
             "grok_settings" => Some(Self::GrokSettings),
+            "grok_mcp" => Some(Self::GrokMcp),
             _ => None,
         }
     }
@@ -778,7 +782,10 @@ pub use inspection::{
     RevisionBackupState, RevisionInspection, RevisionMatch, inspect_interrupted_revisions,
     operation_requires_resolution,
 };
-pub(crate) use mcp_support::{read_mcp_written_file, resolve_mcp_observation_locked};
+pub(crate) use mcp_support::{
+    read_mcp_written_file, read_mcp_written_file_kind, resolve_mcp_observation_kind_locked,
+    resolve_mcp_observation_locked,
+};
 pub use operations::{
     begin_operation, finish_operation, has_recorded_target, operation, recent_operations,
     record_step_applied, record_step_failed, record_step_restored, unfinished_operations,

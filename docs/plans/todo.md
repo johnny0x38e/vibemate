@@ -14,8 +14,9 @@
 6. P26 已交付：Git 固定修订与已核实的 `skills@1.7.4` npx 安装均在隔离目录获取并导入，失败不改变已有库；来源页可补记获取方式。
 7. P27–P30 已交付：Pi/Grok Skill 部署、更新预览与应用（keep/replace、部署刷新）；Claude Code Skill 部署代码与自动化检查已补齐（schema v31），维护者桌面验收待做。
 8. P24.d 首批已合入本机：Grok Build 只在原生字段缺失时写入已声明的 `reasoning_efforts` 列表与列表内默认档；已有数组、旧字段和全局默认保持不变；隔离 macOS Chat/Responses 已确认原生菜单、列表默认档与运行中选择更新，本地 stub 已核实 backend 字段/默认档及运行中切档后的下一请求；Grok 自身将选用值全局持久化并供新会话读取，真实 Provider 接受仍待验证。
-9. skills.sh 市场浏览/安装、Git revision 检查与 P30 应用更新已交付。Skill 方向参考 [skills-marketplace-reference](skills-marketplace-reference.md)；不引入 preset/工作区。下一条主线按 P24 剩余项 → MCP 部署 → P35 的顺序推进；见 [phase-1](phase-1.md)。
-10. P35 非 MCP 部分已实现并通过自动化检查（2026-10-23）：Provider/Model/Skill 删除前列出 Pi/Grok 绑定和 Skill 部署，活动的 Agent 引用阻止删除，失效绑定可显式清除；凭据与数据库删除仍遵守补偿约定。P34 未开始，设计和停止点见 [skill-recovery](skill-recovery.md)。feat-mcp 已合并，Pi MCP 部署与引用约束进入主线。
+9. skills.sh 市场浏览/安装、Git revision 检查与 P30 应用更新已交付。Skill 方向参考 [skills-marketplace-reference](skills-marketplace-reference.md)；不引入 preset/工作区。
+10. P35 非 MCP／Grok 引用与 P32/P33 MCP 写入、P34 Skill 恢复与 Overview `RecoveryHub`（schema v34）均已合入本机；统一入口只发现并跳转到对应模块，不重放写入。维护者决定桌面／真实连接验收后置；见 [phase-1](phase-1.md)、[skill-recovery](skill-recovery.md)。
+11. P24 可写代码已收口：未核实绑定不生成厂商 map／不猜测 Claude 容量通道；真实 Provider 接受与维护者 Tauri 验收仍后置。下一条可写代码主线：P35 验收标准勾选／收尾缺口 → P36；桌面与 P37–P39 发布前专项靠后。
 
 ## 文档整理（2026-10-19）
 
@@ -29,7 +30,7 @@
 - 复用已有接入调研，不因 Agent 小版本更新全面重查或阻塞实现；遇到已知弃用、明确冲突或验证失败，再针对性核实（维护者 2026-10-20 决定）。
 - 不主动推送远端；仅在维护者当次明确指示时执行 push（2026-10-13 约定）。
 - UI 变更同时补中英文和可访问名称；保持既有严格检查，不用 suppression 绕过失败。
-- 外观按维护者人工验收策略；原生行为、真实凭据和跨平台验证单独记录。
+- 外观与桌面／真实连接验收后置（维护者 2026-10-26）；功能代码与自动化检查优先。原生行为、真实凭据和跨平台验证单独记录。
 - Verification 使用 `AGENTS.md` 的适用命令；Rust 过滤测试必须实际运行非零用例。
 - 勾选表示该项已验证；代码完成不等于真实安装、推理或其他平台验收完成。
 - 任务完成后删除详细执行过程，保留仍未解决的限制；未来路径是建议，不提前创建空壳。
@@ -152,17 +153,17 @@ P15 的真实连接记录来自维护者确认，不代表代理重新执行，�
 P24.b = Claude Code；P24.c = Pi；P24.d = Grok Build。服务商模型是唯一来源；重点是原生 Agent 能使用哪些已有属性，不再扩展模型定义或请求调参页面。
 
 - [x] **P24.b 已交付：** 单一模型注入时，Claude Code 的会话模型与 class alias 均指向同一已选模型；已核实 DeepSeek `deepseek-flash` 上下文校正、中央声明列表内的显式默认 effort、独立记忆起始偏好。env 非原生每模型隔离，不代表所有自定义模型可在内部切换。
-- [ ] **P24.b 剩余：** 其它模型的容量与能力映射、默认值注入规则；不得以请求输出编辑器替代独立最大输出能力。
+- [x] **P24.b 未核实通道：** 其它 Claude 模型容量／能力映射保持 unverified，不猜测写入；不得以请求输出编辑器替代独立最大输出能力。真实验收仍待维护者。
 - [x] **P24.c 已交付：** 上下文、最大输出、推理/图片能力、每模型默认思考档位与来源/状态预览。服务商默认档位目前仅显示、不自动选用；用户可从已声明的可映射档位选默认值。「不覆盖」保留原值。
 - [x] **P24.c 本轮纠偏：** 官方 DeepSeek Chat `deepseek-flash` 的所有已声明 `xhigh/max` 独立注入映射，不再只写选中默认档的映射；保留用户 map/null 与原有请求参数。实现与回归检查通过；代理隔离 Pi 原生菜单与会话切换检查通过，维护者 Tauri 预览/应用/恢复及真实请求验收仍待执行。
 - [x] **P24.c 原生菜单与选择：** Pi 1.4.0 隔离 macOS 会话通过 11 项断言：扩展档位显示与 `max` 选择、每模型启动默认档优先于全局值、同 ID 跨 Provider 默认隔离、用户 null 排除与拒绝不可用档、切回模型重新采用保存档位；会话选择不改保存档位或模型文件。合成密钥、临时目录、禁网 sandbox，无 Provider 请求。步骤与边界见 [Pi 契约](../integrations/pi.md#p24c-隔离原生菜单与切换验证)。
 - [x] **P24.c 厂商映射补充：** 官方 DeepSeek Chat 的精确 `deepseek-v4-pro` 使用 `xhigh→high/max→max`；官方 OpenRouter Chat 对明确列表注入 `xhigh→xhigh/max→max`，独立于默认选择并保留用户 map/null。4 个安装 SDK 发送前载荷样本确认 DeepSeek 顶层与 OpenRouter 嵌套努力字段，fetch 调用为 0；Rust 回归覆盖过期审批、双文件恢复与协议/base/ID 边界，前端覆盖选项与预览参数。
-- [ ] **P24.c 剩余：** 其它未核实绑定不生成厂商 map；真实 Provider 接受与维护者 Tauri 预览/应用/恢复验收仍待完成；模型/服务商删除的键清理随 P35。
+- [x] **P24.c 未核实绑定：** 其它绑定不生成厂商 map（Rust 回归覆盖）；真实 Provider 接受与维护者 Tauri 预览/应用/恢复验收仍待完成；模型/服务商删除的键清理随 P35。
 - [x] **P24.d 首批已交付：** 非空中央 `Listed` 档位在原生 `reasoning_efforts` 缺失、推理支持为 supported、安装参考含该字段且未被 `supports_reasoning_effort = false` 禁用时，写入 `value/label`；列表内中央默认档标 `default = true`。已有数组、旧布尔/单值字段、全局 `[models]` 与其他 alias 保持不变；`any`、空列表和未知支持不展开。图像能力继续映射到 `vision`。
 - [x] **P24.d 原生菜单与选择：** Grok 1.0.67 的隔离 macOS Chat/Responses 会话均显示注入列表、启动选用列表默认档，并通过 `/effort` 完成 `high → max → high`；重新打开菜单确认活动档位。10 项断言通过，使用合成密钥、临时 HOME/GROK_HOME/cwd，sandbox 拒绝网络及真实配置读取；无模型提示词或 Provider 请求。复验步骤见 [Grok 契约](../integrations/grok-build.md#p24d-隔离原生菜单与切换验证)。
 - [x] **P24.d backend 载荷：** 隔离 macOS 的两个 backend 分别以列表默认、显式 high/max 发送合成样本到回环 HTTP stub，6 项通过；Chat 输出 `reasoning_effort`，Responses 输出 `reasoning.effort`。stub 故意返回 400 后终止，不联系真实 Provider、不代表推理成功；辅助请求与目标 API ID 分别核对。
 - [x] **P24.d 运行中请求与持久化：** 两种 backend 的隔离 TUI 均确认 `/effort high→max` 后下一合成请求发送 max；Grok 自身写入全局 `default_reasoning_effort=max`，重启新会话优先采用它而非模型列表默认。vibemate 不写该全局字段，不声称每 alias 持久隔离。
-- [ ] **P24.d 剩余：** 真实 Provider 接受结果与维护者桌面验收未完成；独立最大输出与工具能力已确认没有已核实模型级字段，不写入。本地样本不等于完整真实组合验收。
+- [x] **P24.d 代码收口：** 独立最大输出与工具能力已确认没有已核实模型级字段，不写入。真实 Provider 接受与维护者桌面验收仍后置；本地样本不等于完整真实组合验收。
 
 **Verification:** Rust 666 项通过、4 项忽略；前端 1129 项通过；`check:frontend`、fmt/Clippy 与锁定 no-bundle 桌面构建通过；临时 `GROK_HOME` 中的数组表配置被 Grok 1.0.67 正常读取。该批实现检查未启动 Grok 会话或发送 Provider 请求；后续隔离 macOS 原生菜单与切换检查见上。随后 6 个回环 stub 载荷样本及 4 个 Pi SDK 发送前样本通过，均无真实 Provider 请求；真实接受与 Windows/Linux 未验证。本轮完整检查通过：前端 1132 项，Rust 671 项、4 忽略，fmt、Clippy 与锁定 no-bundle 桌面构建通过。另已确认两 backend 的运行中下一请求与原生全局持久化。
 
@@ -199,7 +200,7 @@ P24.b = Claude Code；P24.c = Pi；P24.d = Grok Build。服务商模型是唯一
 
 独立最小推理检查已按维护者决定取消，不实现检查按钮或真实 Provider 测试请求；真实调用由维护者在注入 Agent 后验证。本轮只使用合成密钥的 SDK 发送前截获与回环 HTTP stub；验收步骤见 [维护者交接](model-parameters.md#maintainer-acceptance-handoff)。
 
-**当前完成障碍：** 代码、回归和本机锁定构建已通过；P24.b 的其它 Claude ID 容量/能力通道仍为有原因的 unverified，不猜测写入。P24 整项仍需维护者完成真实 Provider/Agent 组合及 Tauri 预览→详情→应用→恢复验收，不能由代理的隔离样本替代或提前勾选。维护者本轮决定暂不执行真实验收；不再发起真实请求，P24 保持未完成，待恢复验收后继续。
+**当前完成障碍：** 可写注入代码与「未核实不写入」边界已收口并通过回归；P24.b 其它 Claude ID 容量/能力通道仍为有原因的 unverified。P24 整项勾选仍需维护者完成真实 Provider/Agent 组合及 Tauri 预览→详情→应用→恢复验收，不能由代理的隔离样本替代。维护者决定桌面／真实连接验收后置；不再发起真实请求。
 
 **Verification:** 运行映射样本与 UI 切换测试、完整项目检查；真实用例仅使用许可的测试凭据。
 
@@ -315,45 +316,46 @@ P24.b = Claude Code；P24.c = Pi；P24.d = Grok Build。服务商模型是唯一
 
 ### Task P33: 向 Grok Build 注入 MCP 配置
 
-**状态：** 只读预览已交付：Rust 按发现规则读取 `GROK_HOME|~/.grok/config.toml`，对中央 revision、有界 TOML、精确名称及工具前缀做校验；严格 IPC 只收 identity/revision，返回脱敏 stdio/HTTP 提案及 `disabled_mcp_servers` 独立关闭状态。中央列表提供 Grok 双语摘要／详情、错误重试／重新加载、关闭／隐藏后的过期保护和焦点返回；详情明确是 TOML 表的 JSON 表示。窄窗口操作区移至名称下方。不读取 OS 凭据、不执行服务器、不写入配置；相对 cwd／前导 `~/` 仍因语义未核实而明确拒绝。尚不能部署，下一片推进审批、所有权、安全写入／撤销／恢复／中断核对与引用保护。设计见 [mcp-deployment](mcp-deployment.md#grok-read-only-preflight-and-preview-p33)。
+**状态：** 配置管理闭环已合入本机（代码与自动化检查）：schema v33 所有权／意图、审批预览、deploy/update/enable/disable/revoke/restore、中断核对、中央删除引用与 Agent 只读汇总。Rust 写入仅改 `mcp_servers.<name>`，保留模型表与 `disabled_mcp_servers`；凭据只在 deploy/update 读取并拒绝 `${…}`；精确服务名（无 Pi 命名空间归一化）。9 项 Rust 生命周期测试与完整前端检查通过。真实 Grok 连接、桌面 Tauri WebView／IPC、OS 凭据部署与 Windows/Linux 仍待验收。设计见 [mcp-deployment](mcp-deployment.md)。
 
-**Verification：** 9 项 preflight 与 6 项隔离文件预览回归通过；全量 Rust 750 通过、4 忽略，fmt、Clippy `-D warnings`、完整 `check:frontend`（1260 项 UI 测试）与锁定 no-bundle macOS 桌面构建通过；既有 chunk >500 kB 警告仍在。Chrome DevTools 隔离合成 IPC 检查完成中英浅／深色、720×560 长名称／路径、1080×760 列表、详情逐层 Escape／焦点返回及键盘重试；ego-browser／agent-browser 本机不可用，未冒充真实 WebView IPC。本机 Grok 1.0.70，真实根手册仍标为 1.0.67；临时 HOME/GROK_HOME/cwd、禁网 sandbox 中的原生 `mcp add --transport http` 确认 `url/enabled` 形状、没有 `type`。未启动 MCP、推理、doctor 或 Provider 请求，未改真实 Grok 配置；实际 Tauri 预览 IPC、原生连接及 Windows/Linux 尚未验收。
+**Verification：** 9 项 Grok MCP 生命周期测试（stdio/HTTP、脱敏、连字符独立性、过期计划、foreign/modified、删除引用、条目恢复、中断放弃、动态密钥拒绝）；全量 Rust 测试、fmt、Clippy `-D warnings` 与完整 `check:frontend`（1260 项 UI 测试）通过。未启动 MCP／推理／Provider；未改真实 Grok 配置。
 
 **Acceptance criteria:**
 
-- [ ] 原生支持时独立映射传输与参数，不能照搬其他适配器配置或丢弃不支持字段。
-- [ ] 预览、应用、撤销与恢复保持原配置、所有权和凭据脱敏。
-- [ ] 无原生支持时明确标记为不支持、不实现额外桥接（维护者决定 2026-10-13）。
+- [x] 原生支持时独立映射传输与参数，不能照搬其他适配器配置或丢弃不支持字段。
+- [x] 预览、应用、撤销与恢复保持原配置、所有权和凭据脱敏。
+- [x] 无原生支持时明确标记为不支持、不实现额外桥接（维护者决定 2026-10-13）。
+- [ ] 维护者桌面／真实 Grok 连接与跨平台验收（随发布前专项）。
 
-**Verification:** Rust 与部署 UI 回归测试；真实 Grok Build 验证测试服务器可用性与恢复结果。
+**Verification:** Rust 与部署 UI 回归测试已跑通；真实 Grok Build 可用性与恢复结果仍待维护者。
 
 **Dependencies:** P03,P23,P31。
 
 ### Checkpoint C33（P31–P33）
 
-- [ ] P31–P33 均已勾选。
+- [ ] P31–P33 代码已交付；P33 维护者桌面／真实连接与跨平台仍未勾选。
 
 ## 阶段 H：维护与验收
 
 ### Task P34: 恢复未完成操作
 
-**状态：** Pi MCP 的持久意图与显式解决已由 P32 交付；Skill 部分未开始（2026-10-23 停止点），设计见 [skill-recovery](skill-recovery.md)；Grok MCP 与统一恢复入口仍待做。
+**状态：** Pi／Grok MCP 的持久意图与显式解决已由 P32／P33 交付；Skill 部署中断恢复（schema v34、`SkillRecoveryPanel`）与 Overview `RecoveryHub`（汇总 Agent／Skill／MCP 并仅导航）已合入本机；维护者桌面验收仍后置，设计见 [skill-recovery](skill-recovery.md)。
 
-**Description:** 在启动时发现上次中断的 Agent 配置或 Skill/MCP 部署操作，提供明确的恢复入口，不静默重放敏感操作。Agent 配置的中断核对与显式解决已交付（见 H1）；P32 已补 Pi MCP 的持久意图、精确 before/intended 核对及不重放的显式解决。本任务仍需补齐 Skill／Grok MCP 与统一入口，不能因 Pi 切片而整体勾选。
+**Description:** 在启动时发现上次中断的 Agent 配置或 Skill/MCP 部署操作，提供明确的恢复入口，不静默重放敏感操作。Agent 配置的中断核对与显式解决已交付（见 H1）；P32／P33 已补 Pi／Grok MCP 的持久意图与不重放的显式解决；Skill 切片已补 journal／分类／Finish／Dismiss；Overview 汇总入口只发现并跳转。
 
 **Acceptance criteria:**
 
-- [ ] 显示未完成操作的脱敏状态、受影响目标与可恢复动作，不把部分成功显示为全部完成。
-- [ ] 恢复前核对目标和中央状态变化，冲突时保留当前内容并给出处理步骤；重试幂等。
-- [ ] 恢复失败仍可继续处理，日志与引用一致，未知操作版本拒绝自动执行；只操作 vibemate 管理的条目。
+- [x] Skill：显示未完成部署的脱敏状态、受影响目标与 Finish／Dismiss；不把部分成功显示为全部完成；不静默重放。
+- [x] 统一入口汇总 Agent／Skill／MCP 未完成操作；各模块恢复前核对目标变化，冲突时保留当前内容；Finish／Dismiss／MCP 确认不静默重放且可重试。
+- [ ] 恢复失败仍可继续处理；维护者桌面验收通过。
 
-**Verification:** 中断/重启/冲突/重复重试测试及 RecoveryView 行为测试；临时配置模拟一次中断并在重启后完成恢复。
+**Verification:** Skill 中断/冲突/重复 Finish 与面板行为、`listRecoverySummary`／`RecoveryHub` 聚合与导航测试已覆盖；临时配置重启与维护者桌面验收仍待做。
 
 **Dependencies:** P21,P23,P30,P33。
 
 ### Task P35: 约束被引用配置的删除
 
-**状态：** Provider/Model/Skill 非 MCP 部分已实现（2026-10-23）：引用查询、删除阻止和失效绑定清除已完成并通过自动化检查。P32 已实现 Pi MCP 跨目录注册／未完成意图引用展示及事务内删除拒绝；Grok MCP 引用与维护者桌面验收仍待做。
+**状态：** Provider/Model/Skill 非 MCP 部分已实现（2026-10-23）：引用查询、删除阻止和失效绑定清除已完成并通过自动化检查。P32／P33 已实现 Pi／Grok MCP 跨目录注册／未完成意图引用展示及事务内删除拒绝；维护者桌面验收仍待做。
 
 **Description:** 完善 Provider/Model/Skill/MCP 的删除行为，防止已有 Agent 引用突然失效。P32 已实现 Pi MCP 跨目录注册／未完成意图引用展示及事务内删除拒绝；其余 Provider/Model/Skill/Grok MCP 引用与清理仍待完成，不整体勾选。
 

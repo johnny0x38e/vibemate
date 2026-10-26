@@ -6,14 +6,35 @@ import {
     type PiMcpErrorCode,
     type PiMcpState,
 } from "../../lib/desktop/piMcp";
+import {
+    GrokMcpError,
+    readGrokMcpState,
+    type GrokMcpErrorCode,
+    type GrokMcpState,
+} from "../../lib/desktop/grokMcp";
 import buttons from "../../components/actionButtons.module.css";
 import styles from "./McpPiPreview.module.css";
 
-type State =
+type AgentState<T, E> =
     | { kind: "loading" }
-    | { kind: "ready"; value: PiMcpState }
-    | { kind: "error"; code: PiMcpErrorCode };
-/** Explain every retained Pi-root reference before deletion. This is advisory;
+    | { kind: "ready"; value: T }
+    | { kind: "error"; code: E };
+
+function allowed(
+    pi: AgentState<PiMcpState, PiMcpErrorCode>,
+    grok: AgentState<GrokMcpState, GrokMcpErrorCode>,
+    definitionId: string,
+): boolean {
+    if (pi.kind !== "ready" || grok.kind !== "ready") return false;
+    return (
+        pi.value.deployments.length === 0 &&
+        pi.value.recovery?.definitionId !== definitionId &&
+        grok.value.deployments.length === 0 &&
+        grok.value.recovery?.definitionId !== definitionId
+    );
+}
+
+/** Explain every retained Pi/Grok root reference before deletion. Advisory only;
  * the backend repeats its transactional reference check at actual deletion. */
 export function McpDeleteReferences({
     definitionId,
@@ -22,53 +43,79 @@ export function McpDeleteReferences({
 }: {
     definitionId: string;
     onChecked: (allowed: boolean) => void;
-    onManage: () => void;
+    onManage: (agent: "pi" | "grok") => void;
 }): JSX.Element {
     const { t } = useTranslation();
-    const [state, setState] = useState<State>({ kind: "loading" });
     const [attempt, setAttempt] = useState(0);
+    const key = `${definitionId}:${String(attempt)}`;
+    const [answer, setAnswer] = useState<{
+        key: string;
+        pi: AgentState<PiMcpState, PiMcpErrorCode>;
+        grok: AgentState<GrokMcpState, GrokMcpErrorCode>;
+    }>({
+        key,
+        pi: { kind: "loading" },
+        grok: { kind: "loading" },
+    });
+    // Reset loading state during render when the selection or retry changes,
+    // matching usePiMcpRegistrations — avoid synchronous setState inside effects.
+    if (answer.key !== key) {
+        setAnswer({
+            key,
+            pi: { kind: "loading" },
+            grok: { kind: "loading" },
+        });
+    }
+    const pi = answer.key === key ? answer.pi : { kind: "loading" as const };
+    const grok =
+        answer.key === key ? answer.grok : { kind: "loading" as const };
     useEffect(() => {
         let current = true;
-        readPiMcpState(definitionId).then(
-            (value) => {
-                if (current) {
-                    setState({ kind: "ready", value });
-                    onChecked(
-                        value.deployments.length === 0 &&
-                            value.recovery?.definitionId !== definitionId,
-                    );
-                }
-            },
-            (error: unknown) => {
-                if (current) {
-                    setState({
-                        kind: "error",
-                        code:
-                            error instanceof PiMcpError
-                                ? error.code
-                                : "outcome_unknown",
-                    });
-                    onChecked(false);
-                }
-            },
-        );
+        onChecked(false);
+        void Promise.allSettled([
+            readPiMcpState(definitionId),
+            readGrokMcpState(definitionId),
+        ]).then(([piResult, grokResult]) => {
+            if (!current) return;
+            const nextPi: AgentState<PiMcpState, PiMcpErrorCode> =
+                piResult.status === "fulfilled"
+                    ? { kind: "ready", value: piResult.value }
+                    : {
+                          kind: "error",
+                          code:
+                              piResult.reason instanceof PiMcpError
+                                  ? piResult.reason.code
+                                  : "outcome_unknown",
+                      };
+            const nextGrok: AgentState<GrokMcpState, GrokMcpErrorCode> =
+                grokResult.status === "fulfilled"
+                    ? { kind: "ready", value: grokResult.value }
+                    : {
+                          kind: "error",
+                          code:
+                              grokResult.reason instanceof GrokMcpError
+                                  ? grokResult.reason.code
+                                  : "outcome_unknown",
+                      };
+            setAnswer({ key, pi: nextPi, grok: nextGrok });
+            onChecked(allowed(nextPi, nextGrok, definitionId));
+        });
         return () => {
             current = false;
         };
-    }, [definitionId, attempt, onChecked]);
+    }, [definitionId, attempt, onChecked, key]);
     return (
         <div className={styles["section"]}>
-            {state.kind === "loading" && (
-                <p role="status">{t("mcp.pi.manage.loading")}</p>
+            {(pi.kind === "loading" || grok.kind === "loading") && (
+                <p role="status">{t("mcp.delete.checkingReferences")}</p>
             )}
-            {state.kind === "error" && (
+            {pi.kind === "error" && (
                 <>
-                    <p role="alert">{t(`mcp.pi.errors.${state.code}`)}</p>
+                    <p role="alert">{t(`mcp.pi.errors.${pi.code}`)}</p>
                     <button
                         type="button"
                         className={buttons["secondary"]}
                         onClick={() => {
-                            setState({ kind: "loading" });
                             setAttempt((value) => value + 1);
                         }}
                     >
@@ -76,32 +123,78 @@ export function McpDeleteReferences({
                     </button>
                 </>
             )}
-            {state.kind === "ready" && (
+            {grok.kind === "error" && (
                 <>
-                    {state.value.deployments.map((row) => (
-                        <p key={row.configRoot}>
+                    <p role="alert">{t(`mcp.grok.errors.${grok.code}`)}</p>
+                    <button
+                        type="button"
+                        className={buttons["secondary"]}
+                        onClick={() => {
+                            setAttempt((value) => value + 1);
+                        }}
+                    >
+                        {t("mcp.retry")}
+                    </button>
+                </>
+            )}
+            {pi.kind === "ready" && (
+                <>
+                    {pi.value.deployments.map((row) => (
+                        <p key={`pi:${row.configRoot}`}>
                             {t("mcp.pi.manage.deleteReference", {
                                 path: row.configRoot,
                                 state: t(`mcp.pi.states.${row.state}`),
                             })}
                         </p>
                     ))}
-                    {state.value.recovery?.definitionId === definitionId && (
+                    {pi.value.recovery?.definitionId === definitionId && (
                         <p>
                             {t("mcp.pi.recovery.pending", {
-                                name: state.value.recovery.serverName,
+                                name: pi.value.recovery.serverName,
                             })}
                         </p>
                     )}
-                    {(state.value.deployments.length > 0 ||
-                        state.value.recovery?.definitionId ===
-                            definitionId) && (
+                    {(pi.value.deployments.length > 0 ||
+                        pi.value.recovery?.definitionId === definitionId) && (
                         <button
                             type="button"
                             className={buttons["secondary"]}
-                            onClick={onManage}
+                            onClick={() => {
+                                onManage("pi");
+                            }}
                         >
                             {t("mcp.pi.manage.resolveReferences")}
+                        </button>
+                    )}
+                </>
+            )}
+            {grok.kind === "ready" && (
+                <>
+                    {grok.value.deployments.map((row) => (
+                        <p key={`grok:${row.configRoot}`}>
+                            {t("mcp.grok.manage.deleteReference", {
+                                path: row.configRoot,
+                                state: t(`mcp.grok.states.${row.state}`),
+                            })}
+                        </p>
+                    ))}
+                    {grok.value.recovery?.definitionId === definitionId && (
+                        <p>
+                            {t("mcp.grok.recovery.pending", {
+                                name: grok.value.recovery.serverName,
+                            })}
+                        </p>
+                    )}
+                    {(grok.value.deployments.length > 0 ||
+                        grok.value.recovery?.definitionId === definitionId) && (
+                        <button
+                            type="button"
+                            className={buttons["secondary"]}
+                            onClick={() => {
+                                onManage("grok");
+                            }}
+                        >
+                            {t("mcp.grok.manage.resolveReferences")}
                         </button>
                     )}
                 </>

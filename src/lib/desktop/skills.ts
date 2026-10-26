@@ -48,6 +48,7 @@ const SKILL_CODES = [
     "revision_check_failed",
     "update_plan_stale",
     "update_strategy_invalid",
+    "recovery_conflict",
 ] as const;
 /** Sanitized domain, preview or response-validation failure. */
 export type SkillErrorCode =
@@ -1140,6 +1141,189 @@ export async function listSkillDeployments(
     const items = data.map((value: unknown) => deploymentRecord(value));
     if (items.some((row) => row.skillId !== skillId)) invalid();
     return { kind: "desktop", items };
+}
+
+/** Kind of unfinished skill deploy journal row. */
+export type SkillDeployOperationKind = "apply" | "disable";
+/** Durable journal state for one unfinished skill deploy operation. */
+export type SkillDeployOperationState = "prepared" | "unknown";
+/** Live classification of one unfinished skill deploy journal row. */
+export type SkillDeployRecoveryClassification =
+    | "completed"
+    | "not_started"
+    | "needs_record"
+    | "needs_record_clear"
+    | "conflict";
+/** One unfinished skill deploy/disable operation for the recovery panel. */
+export interface SkillDeployRecoveryItem {
+    id: string;
+    kind: SkillDeployOperationKind;
+    state: SkillDeployOperationState;
+    classification: SkillDeployRecoveryClassification;
+    skillId: string;
+    skillName: string;
+    agentId: SkillDeployAgent;
+    configRoot: string;
+    targetPath: string;
+    mode: SkillDeployMode | null;
+    canFinish: boolean;
+    canDismiss: boolean;
+}
+/** Outcome of finishing or dismissing one recovery item. */
+export interface SkillDeployRecoveryResolved {
+    id: string;
+    classification: SkillDeployRecoveryClassification;
+}
+
+const OPERATION_KINDS = ["apply", "disable"] as const;
+const OPERATION_STATES = ["prepared", "unknown"] as const;
+const RECOVERY_CLASSIFICATIONS = [
+    "completed",
+    "not_started",
+    "needs_record",
+    "needs_record_clear",
+    "conflict",
+] as const;
+
+function operationKind(value: unknown): SkillDeployOperationKind {
+    const text = string(value);
+    const known = OPERATION_KINDS.find((kind) => kind === text);
+    if (known === undefined) invalid();
+    return known;
+}
+
+function operationState(value: unknown): SkillDeployOperationState {
+    const text = string(value);
+    const known = OPERATION_STATES.find((state) => state === text);
+    if (known === undefined) invalid();
+    return known;
+}
+
+function recoveryClassification(
+    value: unknown,
+): SkillDeployRecoveryClassification {
+    const text = string(value);
+    const known = RECOVERY_CLASSIFICATIONS.find(
+        (classification) => classification === text,
+    );
+    if (known === undefined) invalid();
+    return known;
+}
+
+function recoveryItem(value: unknown): SkillDeployRecoveryItem {
+    const data = object(value, [
+        "id",
+        "kind",
+        "state",
+        "classification",
+        "skillId",
+        "skillName",
+        "agentId",
+        "configRoot",
+        "targetPath",
+        "mode",
+        "canFinish",
+        "canDismiss",
+    ]);
+    const id = string(data["id"]);
+    if (!ID_PATTERN.test(id)) invalid();
+    const skillId = string(data["skillId"]);
+    if (!ID_PATTERN.test(skillId)) invalid();
+    const agentId = string(data["agentId"]);
+    const knownAgent = DEPLOY_AGENTS.find((agent) => agent === agentId);
+    if (knownAgent === undefined) invalid();
+    const mode = data["mode"] === null ? null : deployMode(data["mode"]);
+    const canFinish = boolean(data["canFinish"]);
+    const canDismiss = boolean(data["canDismiss"]);
+    const classification = recoveryClassification(data["classification"]);
+    if (canFinish === (classification === "conflict")) invalid();
+    if (
+        canDismiss !==
+        (classification === "completed" ||
+            classification === "not_started" ||
+            classification === "conflict")
+    ) {
+        invalid();
+    }
+    return {
+        id,
+        kind: operationKind(data["kind"]),
+        state: operationState(data["state"]),
+        classification,
+        skillId,
+        skillName: string(data["skillName"]),
+        agentId: knownAgent,
+        configRoot: string(data["configRoot"]),
+        targetPath: string(data["targetPath"]),
+        mode,
+        canFinish,
+        canDismiss,
+    };
+}
+
+function recoveryResolved(value: unknown): SkillDeployRecoveryResolved {
+    const data = object(value, ["id", "classification"]);
+    const id = string(data["id"]);
+    if (!ID_PATTERN.test(id)) invalid();
+    return {
+        id,
+        classification: recoveryClassification(data["classification"]),
+    };
+}
+
+/** List unfinished skill deploy journal rows, or an honest browser preview. */
+export async function listSkillDeployRecoveries(): Promise<
+    { kind: "preview" } | { kind: "desktop"; items: SkillDeployRecoveryItem[] }
+> {
+    if (!isTauri()) return { kind: "preview" };
+    const data = await call("list_skill_deploy_recoveries", {});
+    if (!Array.isArray(data)) invalid();
+    return {
+        kind: "desktop",
+        items: data.map((value: unknown) => recoveryItem(value)),
+    };
+}
+
+/** Finish one unfinished skill deploy journal row after re-classification. */
+export async function finishSkillDeployRecovery(input: {
+    id: string;
+    expectedClassification: SkillDeployRecoveryClassification;
+}): Promise<SkillDeployRecoveryResolved> {
+    desktop();
+    if (!ID_PATTERN.test(input.id)) {
+        throw new SkillRequestError("invalid_request");
+    }
+    const resolved = recoveryResolved(
+        await call("finish_skill_deploy_recovery", { request: input }),
+    );
+    if (
+        resolved.id !== input.id ||
+        resolved.classification !== input.expectedClassification
+    ) {
+        invalid();
+    }
+    return resolved;
+}
+
+/** Dismiss one unfinished skill deploy journal row without touching files. */
+export async function dismissSkillDeployRecovery(input: {
+    id: string;
+    expectedClassification: SkillDeployRecoveryClassification;
+}): Promise<SkillDeployRecoveryResolved> {
+    desktop();
+    if (!ID_PATTERN.test(input.id)) {
+        throw new SkillRequestError("invalid_request");
+    }
+    const resolved = recoveryResolved(
+        await call("dismiss_skill_deploy_recovery", { request: input }),
+    );
+    if (
+        resolved.id !== input.id ||
+        resolved.classification !== input.expectedClassification
+    ) {
+        invalid();
+    }
+    return resolved;
 }
 
 /** Classification of local vs upstream change for an update preview. */

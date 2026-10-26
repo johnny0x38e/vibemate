@@ -30,9 +30,10 @@ import {
 } from "../../lib/desktop/mcp";
 import { McpForm } from "./McpForm";
 import { McpPiManager } from "./McpPiManager";
-import { McpGrokPreview } from "./McpGrokPreview";
+import { McpGrokManager } from "./McpGrokManager";
 import { McpDeleteReferences } from "./McpDeleteReferences";
 import { usePiMcpRegistrations } from "./usePiMcpRegistrations";
+import { useGrokMcpRegistrations } from "./useGrokMcpRegistrations";
 import buttons from "../../components/actionButtons.module.css";
 import chip from "../../components/infoChip.module.css";
 import surfaceList from "../../components/surfaceList.module.css";
@@ -113,6 +114,7 @@ export function McpView({
     const [deploymentEpoch, setDeploymentEpoch] = useState(0);
     const [deploymentBusy, setDeploymentBusy] = useState(false);
     const registrations = usePiMcpRegistrations(hidden, deploymentEpoch);
+    const grokRegistrations = useGrokMcpRegistrations(hidden, deploymentEpoch);
     const [deleteTarget, setDeleteTarget] = useState<McpRecord | null>(null);
     const [deleteAllowed, setDeleteAllowed] = useState(false);
     const [previewTarget, setPreviewTarget] = useState<{
@@ -525,20 +527,36 @@ export function McpView({
                                                         styles["subline"]
                                                     }
                                                 >
-                                                    {registrations.kind ===
-                                                    "ready"
-                                                        ? t(
-                                                              registrations.value.deployments.some(
-                                                                  (item) =>
-                                                                      item.definitionId ===
-                                                                      record.id,
+                                                    {[
+                                                        registrations.kind ===
+                                                        "ready"
+                                                            ? t(
+                                                                  registrations.value.deployments.some(
+                                                                      (item) =>
+                                                                          item.definitionId ===
+                                                                          record.id,
+                                                                  )
+                                                                      ? "mcp.pi.manage.registeredSummary"
+                                                                      : "mcp.pi.states.unregistered",
                                                               )
-                                                                  ? "mcp.pi.manage.registeredSummary"
-                                                                  : "mcp.pi.states.unregistered",
-                                                          )
-                                                        : t(
-                                                              "mcp.pi.manage.summaryUnknown",
-                                                          )}
+                                                            : t(
+                                                                  "mcp.pi.manage.summaryUnknown",
+                                                              ),
+                                                        grokRegistrations.kind ===
+                                                        "ready"
+                                                            ? t(
+                                                                  grokRegistrations.value.deployments.some(
+                                                                      (item) =>
+                                                                          item.definitionId ===
+                                                                          record.id,
+                                                                  )
+                                                                      ? "mcp.grok.manage.registeredSummary"
+                                                                      : "mcp.grok.states.unregistered",
+                                                              )
+                                                            : t(
+                                                                  "mcp.grok.manage.summaryUnknown",
+                                                              ),
+                                                    ].join(" · ")}
                                                 </p>
                                                 {record.cleanupPending && (
                                                     <p
@@ -596,7 +614,7 @@ export function McpView({
                                                         icon="mcp"
                                                         blocked={blocked}
                                                         label={t(
-                                                            "mcp.grokPreview.open",
+                                                            "mcp.grok.manage.open",
                                                             {
                                                                 name: record.displayName,
                                                             },
@@ -725,7 +743,7 @@ export function McpView({
                 </>
             )}
             {!hidden && previewTarget?.agent === "grok" && (
-                <McpGrokPreview
+                <McpGrokManager
                     key={`${previewTarget.record.id}-${String(previewTarget.record.revision)}`}
                     record={previewTarget.record}
                     returnFocus={previewTarget.trigger}
@@ -735,6 +753,14 @@ export function McpView({
                     onReload={() => {
                         setPreviewTarget(null);
                         void reload();
+                    }}
+                    onBusyChange={(busy) => {
+                        mutationPending.current = busy;
+                        if (active.current) setDeploymentBusy(busy);
+                    }}
+                    onChanged={() => {
+                        if (active.current)
+                            setDeploymentEpoch((value) => value + 1);
                     }}
                 />
             )}
@@ -795,9 +821,9 @@ export function McpView({
                                 key={deleteTarget.id}
                                 definitionId={deleteTarget.id}
                                 onChecked={setDeleteAllowed}
-                                onManage={() => {
+                                onManage={(agent) => {
                                     setPreviewTarget({
-                                        agent: "pi",
+                                        agent,
                                         record: deleteTarget,
                                         trigger: deleteTrigger.current,
                                     });

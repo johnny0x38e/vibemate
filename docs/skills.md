@@ -34,7 +34,8 @@ user-level `skills/` directories are implemented. See
 Migration v10 created `skill`; v11 rebuilt it to widen the content limits; v27
 added the fetch method and installer fields; v28–v29 added `skill_deployment`
 for per-Agent ownership; v30 added revision-check columns; v31 added Claude Code
-as a deployment target. Files live in
+as a deployment target; v34 added `skill_deploy_operation` for unfinished
+apply/disable recovery. Files live in
 `<app-data>/skills/<id>/`. Managed copies move with the database, so a backup of
 the app-data folder stays complete.
 
@@ -236,10 +237,12 @@ stays.
 `cleanup_deleted_skill_copies` removes only parked copies with no matching record.
 A parked copy whose record still exists comes from an interrupted delete and
 stays until that record is deleted. Deleting a Skill that still has a
-`skill_deployment` row returns `skill_in_use`. The delete confirmation loads
-those rows and shows the Agent, mode, revision and sync state; deletion stays
-disabled until the user opens the detail page and revokes the deployments. This
-is the Skill-specific reference view; MCP references remain with P33/P35.
+`skill_deployment` row or an unfinished `skill_deploy_operation` journal row
+returns `skill_in_use`. The delete confirmation loads deployment rows and shows
+the Agent, mode, revision and sync state; deletion stays disabled until the user
+opens the detail page and revokes the deployments (and finishes or dismisses any
+journal row). This is the Skill-specific reference view; MCP references remain
+with P32/P33.
 
 ## Deploy to Claude Code, Pi and Grok Build
 
@@ -270,6 +273,12 @@ the official Skill contract allows a `<name>` entry to be a symbolic link.
    deployed to each Agent independently; revoking one does not touch the others.
 3. **Disable** removes only a still-owned symlink or copy. If the user replaced
    the target, the path is left alone and the ownership row is cleared.
+4. **Recovery** journals each apply/disable as `prepared` before the first
+   filesystem change and clears the row when ownership and the target agree. A
+   write that cannot be rolled back is marked `unknown`. The Skills list shows
+   unfinished rows with a live classification and Finish/Dismiss actions; Finish
+   repairs ownership only and never replays a filesystem write. Design details
+   live in [skill-recovery](plans/skill-recovery.md).
 
 The Skill detail page owns the deploy controls and an Agent selector. The Agent
 detail Skill segment for Claude Code, Pi and Grok Build is read-only: it lists
@@ -300,6 +309,9 @@ deployments for that agent directory and jumps to the Skills module.
 - The detail page includes a **Deploy to an agent** card: Agent and mode choice,
   target path and status, apply, current deployments and remove. Browser preview
   reports that deploy needs the desktop app.
+- The Skills list shows an **Unfinished skill deployments** panel when journal
+  rows remain: Finish repairs ownership, Dismiss clears the journal without
+  rewriting Agent files, and the panel stays hidden when nothing is pending.
 
 ## Verification scope
 
@@ -309,9 +321,10 @@ discovery and batch reporting, large bodies and headers, the IPC contract, Git
 and npx request validation, acquired-tree discovery, partial imports, workspace
 cleanup, source-method edits, the v27 fields, and deploy preview/apply/disable
 for Claude Code, Pi and Grok Build (symlink, copy, config-root override, foreign
-conflict, stale tokens, cross-Agent isolation, delete-while-deployed). Storage
-tests cover the skill migrations, preserved deployment rows and the new
-`claudeCode` target value.
+conflict, stale tokens, cross-Agent isolation, delete-while-deployed,
+interrupted-journal Finish/Dismiss and delete-while-journaled). Storage tests
+cover the skill migrations, preserved deployment rows, the `claudeCode` target
+value and the v34 `skill_deploy_operation` table.
 
 The reviewed public source `vercel-labs/agent-skills` was installed through both
 real paths: a pinned Git commit (`063bee9…`) resolved to the same commit in the

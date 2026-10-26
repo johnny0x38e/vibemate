@@ -13,6 +13,7 @@ import { discoverAgents } from "../../lib/desktop/agents";
 import { countProviderModels } from "../../lib/desktop/models";
 import { listMcpDefinitions } from "../../lib/desktop/mcp";
 import { listProviders } from "../../lib/desktop/providers";
+import { listRecoverySummary } from "../../lib/desktop/recoverySummary";
 import { listSkills } from "../../lib/desktop/skills";
 import { agentReport, automaticAgentPaths } from "../../test/agentDiscovery";
 import { OverviewView, type OverviewDestination } from "./OverviewView";
@@ -40,6 +41,11 @@ vi.mock(import("../../lib/desktop/skills"), async (original) => ({
 vi.mock(import("../../lib/desktop/mcp"), async (original) => ({
     ...(await original()),
     listMcpDefinitions: vi.fn(),
+}));
+
+vi.mock(import("../../lib/desktop/recoverySummary"), async (original) => ({
+    ...(await original()),
+    listRecoverySummary: vi.fn(),
 }));
 
 afterEach(() => {
@@ -123,6 +129,9 @@ beforeEach(() => {
                 deletedCleanupPending: false,
             },
         });
+    vi.mocked(listRecoverySummary)
+        .mockReset()
+        .mockResolvedValue({ kind: "desktop", items: [] });
 });
 
 test("shows five totals including zero selected models, without inventing preview numbers", async () => {
@@ -194,6 +203,7 @@ test("browser preview stays honest and never invents totals", async () => {
     vi.mocked(discoverAgents).mockResolvedValue({ kind: "preview" });
     vi.mocked(listSkills).mockResolvedValue({ kind: "preview" });
     vi.mocked(listMcpDefinitions).mockResolvedValue({ kind: "preview" });
+    vi.mocked(listRecoverySummary).mockResolvedValue({ kind: "preview" });
     await mount();
     await screen.findByRole("button", {
         name: "Providers: Open the desktop app to read this count.",

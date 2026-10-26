@@ -98,6 +98,8 @@ pub enum SkillError {
     UpdatePlanStale,
     /// The chosen update strategy is not valid for the current comparison status.
     UpdateStrategyInvalid,
+    /// Finish/Dismiss is not allowed for the current recovery classification.
+    RecoveryConflict,
 }
 
 /// Import the skills inside one chosen folder.
@@ -727,4 +729,90 @@ pub struct SkillDeploymentRecord {
     pub in_sync: bool,
     /// Deploy timestamp in Unix milliseconds.
     pub deployed_at_ms: i64,
+}
+
+/// Kind of unfinished skill deploy journal row.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum SkillDeployOperationKind {
+    /// Apply a reviewed deployment (create or replace the target).
+    Apply,
+    /// Revoke a managed deployment.
+    Disable,
+}
+
+/// Durable journal state for one unfinished skill deploy operation.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum SkillDeployOperationState {
+    /// Written before the first filesystem change; may still be in progress.
+    Prepared,
+    /// A write may have changed the target and rollback could not be proven.
+    Unknown,
+}
+
+/// Live classification of one unfinished skill deploy journal row.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum SkillDeployRecoveryClassification {
+    /// Target and ownership already agree with the intended outcome.
+    Completed,
+    /// No filesystem change happened yet.
+    NotStarted,
+    /// Target matches managed content but the ownership row is missing.
+    NeedsRecord,
+    /// Ownership row remains after the target was removed.
+    NeedsRecordClear,
+    /// Target is foreign, unreadable, or disagrees with the journal.
+    Conflict,
+}
+
+/// One unfinished skill deploy/disable operation for the recovery panel.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct SkillDeployRecoveryItem {
+    /// Journal identity.
+    pub id: String,
+    /// Original action.
+    pub kind: SkillDeployOperationKind,
+    /// Durable journal state (`prepared` or `unknown`).
+    pub state: SkillDeployOperationState,
+    /// Live classification against the current target and ownership row.
+    pub classification: SkillDeployRecoveryClassification,
+    /// Central skill identity named by the journal.
+    pub skill_id: String,
+    /// Skill name when the library still holds it; otherwise the target name.
+    pub skill_name: String,
+    /// Agent identity wire value.
+    pub agent_id: String,
+    /// Absolute Agent configuration root from the journal.
+    pub config_root: String,
+    /// Absolute target path from the journal.
+    pub target_path: String,
+    /// Deploy mode when known.
+    pub mode: Option<SkillDeployMode>,
+    /// Whether Finish is allowed for this classification.
+    pub can_finish: bool,
+    /// Whether Dismiss is allowed for this classification.
+    pub can_dismiss: bool,
+}
+
+/// Request to finish or dismiss one reviewed recovery item.
+#[derive(Debug, Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct SkillDeployRecoveryAction {
+    /// Journal identity the interface listed.
+    pub id: String,
+    /// Classification the interface showed when the user chose the action.
+    pub expected_classification: SkillDeployRecoveryClassification,
+}
+
+/// Outcome of finishing or dismissing one recovery item.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct SkillDeployRecoveryResolved {
+    /// Journal identity that was cleared.
+    pub id: String,
+    /// Classification that was acted on.
+    pub classification: SkillDeployRecoveryClassification,
 }

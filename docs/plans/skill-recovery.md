@@ -1,13 +1,13 @@
 # Skill deployment recovery (P34, non-MCP slice)
 
 Task status stays in [todo.md](todo.md). This page records the stopping point
-and the reviewed design; implementation has not started.
+and the reviewed design.
 
 ## Scope
 
 Agent configuration recovery is delivered in H1. This slice adds unfinished
 **Skill deploy/disable** operations to a recovery entry. MCP operations stay with
-P33/feat-mcp; the same journal pattern can cover them later.
+P32/P33; the same journal pattern can cover a unified entry later.
 
 The recovery entry discovers operations and explains their state. It never
 replays a deployment on startup and never rewrites an Agent file that vibemate
@@ -15,7 +15,7 @@ does not own.
 
 ## Journal
 
-Add schema v33 (v31 is Claude Code Skill deployment and v32 is Pi MCP):
+Schema **v34** (v33 is Grok MCP ownership/change tables):
 
 ```sql
 CREATE TABLE skill_deploy_operation (
@@ -91,13 +91,13 @@ A `SkillRecoveryPanel` above the Skill library list:
 - keeps errors local to the panel and reloads after an action;
 - stays hidden when no unfinished row exists.
 
-This is a Skill-specific entry. The unified Agent/MCP recovery entry remains
-part of the MCP follow-up, so P34 is not complete until that entry and its
-acceptance evidence exist.
+This is a Skill-specific entry. Overview `RecoveryHub` aggregates Agent history
+rows that require resolution, Skill deploy recoveries, and Pi/Grok MCP
+interruptions, then navigates to the owning module without replaying writes.
 
 ## Tests
 
-- Migrate v32 to v33; preserve unrelated rows.
+- Migrate v33 to v34; preserve unrelated rows.
 - Crash after filesystem write with no ownership row -> `needs_record`; Finish
   records ownership and clears the journal.
 - Crash after target removal with a stale ownership row ->
@@ -107,10 +107,11 @@ acceptance evidence exist.
 - Repeated Finish is idempotent or reports `not_found`.
 - `delete_skill` refuses while a journal row exists.
 - Frontend panel tests for Finish, Dismiss, error and reload behavior.
+- Overview `listRecoverySummary` / `RecoveryHub` aggregation and navigate-only
+  behavior (including domain-isolation when one read fails).
 
-## Stopping point (2026-10-23)
+## Stopping point
 
-The design above is recorded. A partial journal table/type draft was removed so
-the tree stays compiling. P35's non-MCP deletion constraints are the last
-completed change. Next steps: implement the journal in `skills/deploy`, then
-the recovery command and panel.
+Skill journal, recovery commands, `SkillRecoveryPanel`, Overview `RecoveryHub`
+(Agent/Skill/MCP discovery + navigate-only), and automated checks are
+implemented (schema v34). Remaining for full P34: maintainer desktop acceptance.
