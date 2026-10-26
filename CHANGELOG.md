@@ -8,6 +8,16 @@ GitHub release notes are extracted from the matching version section only.
 
 ### Added
 
+- Read-only Grok Build MCP preview from the central list. Rust selects
+  `GROK_HOME|~/.grok/config.toml`, checks central revisions, bounded TOML, exact-name
+  conflicts and usable tool prefixes, and returns masked stdio/HTTP proposals
+  with separate personal disable-list reporting. The bilingual summary and
+  nested entry details support safe errors, retry/reload, focus return and late-read
+  protection; unknown response fields and unmasked values are discarded. Dynamic
+  public fields and unverified relative/home paths fail explicitly. Narrow-window
+  MCP rows keep names above their action group. Grok deployment is not available
+  yet: preview does not read OS credentials, change files or start/contact servers.
+
 - Reference-aware deletion for Providers, saved models and Skills. Provider and
   model dialogs list Pi provider bindings and Grok model aliases, classify them
   against the live Agent file, and refuse deletion while an entry is active or

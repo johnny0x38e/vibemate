@@ -195,6 +195,43 @@ N 处。P22/P23 首批按「只写选中条目」实现：一次预览只写选�
 维护者配置里 `api_backend` 有三个条目写成 `chat_comptetions`（官方值域是 `chat_completions`）。
 客户端是否校验、这些条目是否因此失效未核实；适配器不能依赖客户端报错来发现写错的值。
 
+## P33 MCP 契约复核与当前边界
+
+本轮实际入口已指向 `grok-1.0.70-macos-aarch64`，临时 HOME/GROK_HOME/cwd
+中的 `--version` 返回 `grok 1.0.70 (f50904eaee6c)`；真实根的
+`.metadata_version` 仍为 `1.0.67`。因此不能把真实根中随版本文档当作
+1.0.70 已解包的文档，也没有为了刷新它而启动真实会话。
+
+依据为 [官方 MCP 文档源码](https://github.com/xai-org/grok-build/blob/main/crates/codegen/xai-grok-pager/docs/user-guide/07-mcp-servers.md)、
+[官方字段参考源码](https://github.com/xai-org/grok-build/blob/main/crates/codegen/xai-grok-pager/docs/user-guide/26-config-reference.md)
+（通过 Context7 读取）和本机仍标记为 1.0.67 的同名手册。核实结果：
+
+- 原生表为 `mcp_servers`，不是 Pi 的 `mcpServers`。stdio 使用
+  `command/args/env/cwd`，HTTP 使用 `url/headers`；两者支持 `enabled`。
+  在拒绝全部网络的 macOS sandbox 中，用 1.0.70 的
+  `mcp add --transport http vibemate-probe https://example.invalid/mcp`
+  只写临时根，实际产生 `url` 与 `enabled = true`，没有 `type` 字段。
+  这验证 CLI 生成的配置形状，不验证连接或 Streamable HTTP 请求。
+- `disabled_mcp_servers` 是独立用户级关闭列表；原生启停可能同时更改它和条目的
+  `enabled`。只预览条目不能声称已启用，也不应自动清除此列表。
+- 工具目录键是 `server__tool`：服务名须以 ASCII 字母或 `_` 开头，随后只含
+  ASCII 字母、数字、`_`、`-`；嵌入 `__` 或末尾 `_` 会产生歧义，工具会被跳过。
+  Grok 保留连字符，不套用 Pi 的连字符／下划线归一化规则。
+- Grok 在 `command/args/url/env/headers` 中扩展 `${VAR}` 和默认值引用。
+  第一片只读 preflight 拒绝公开 stdio 字段的 `${`，不把中央字面值改成动态引用。
+  cwd 相对路径及前导 `~/` 的语义未核实，先明确拒绝，不猜测展开或悄悄丢弃。
+- 项目、兼容来源、策略与 Agent frontmatter 仍可改变最终生效条目；只读 proposal
+  不执行这些发现，也不代表写入、有效或连接成功。
+
+后续只读预览已接入 Rust 目标发现、严格 IPC 与中英文摘要／详情。目标固定为
+发现规则选出的 `GROK_HOME|~/.grok/config.toml`；调用方只传中央 identity/revision，
+不传路径或文档。复用共享有界读取器，现有符号链接只报告、不替换；详情明确标为
+拟新增 TOML 表的 JSON 表示，不冒充完整配置或写入审批。
+
+本轮验证没有启动 MCP 服务器、推理或 doctor，没有访问外部服务、读取真实配置／凭据
+或修改真实 Grok 文件。浏览器合成 IPC 检查不代表真实 WebView IPC 或原生 Grok 生效；
+完整写入闭环、原生连接与跨平台验收仍待 P33 后续切片。
+
 ## Skill 与 MCP 启停
 
 [Skill 文档](https://docs.x.ai/build/features/skills-plugins-marketplaces)支持含

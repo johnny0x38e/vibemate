@@ -30,6 +30,7 @@ import {
 } from "../../lib/desktop/mcp";
 import { McpForm } from "./McpForm";
 import { McpPiManager } from "./McpPiManager";
+import { McpGrokPreview } from "./McpGrokPreview";
 import { McpDeleteReferences } from "./McpDeleteReferences";
 import { usePiMcpRegistrations } from "./usePiMcpRegistrations";
 import buttons from "../../components/actionButtons.module.css";
@@ -115,6 +116,7 @@ export function McpView({
     const [deleteTarget, setDeleteTarget] = useState<McpRecord | null>(null);
     const [deleteAllowed, setDeleteAllowed] = useState(false);
     const [previewTarget, setPreviewTarget] = useState<{
+        agent: "pi" | "grok";
         record: McpRecord;
         trigger: HTMLElement | null;
     } | null>(null);
@@ -508,7 +510,10 @@ export function McpView({
                                 >
                                     {list.items.map((record) => (
                                         <li
-                                            className={surfaceList["item"]}
+                                            className={[
+                                                surfaceList["item"],
+                                                styles["listItem"],
+                                            ].join(" ")}
                                             key={record.id}
                                         >
                                             <div className={styles["details"]}>
@@ -577,6 +582,33 @@ export function McpView({
                                                             )
                                                                 return;
                                                             setPreviewTarget({
+                                                                agent: "pi",
+                                                                record,
+                                                                trigger:
+                                                                    document.activeElement instanceof
+                                                                    HTMLElement
+                                                                        ? document.activeElement
+                                                                        : null,
+                                                            });
+                                                        }}
+                                                    />
+                                                    <IconButton
+                                                        icon="mcp"
+                                                        blocked={blocked}
+                                                        label={t(
+                                                            "mcp.grokPreview.open",
+                                                            {
+                                                                name: record.displayName,
+                                                            },
+                                                        )}
+                                                        onClick={() => {
+                                                            if (
+                                                                blocked ||
+                                                                mutationPending.current
+                                                            )
+                                                                return;
+                                                            setPreviewTarget({
+                                                                agent: "grok",
                                                                 record,
                                                                 trigger:
                                                                     document.activeElement instanceof
@@ -692,7 +724,21 @@ export function McpView({
                     )}
                 </>
             )}
-            {!hidden && previewTarget !== null && (
+            {!hidden && previewTarget?.agent === "grok" && (
+                <McpGrokPreview
+                    key={`${previewTarget.record.id}-${String(previewTarget.record.revision)}`}
+                    record={previewTarget.record}
+                    returnFocus={previewTarget.trigger}
+                    onClose={() => {
+                        setPreviewTarget(null);
+                    }}
+                    onReload={() => {
+                        setPreviewTarget(null);
+                        void reload();
+                    }}
+                />
+            )}
+            {!hidden && previewTarget?.agent === "pi" && (
                 <McpPiManager
                     key={`${previewTarget.record.id}-${String(previewTarget.record.revision)}`}
                     record={previewTarget.record}
@@ -751,6 +797,7 @@ export function McpView({
                                 onChecked={setDeleteAllowed}
                                 onManage={() => {
                                     setPreviewTarget({
+                                        agent: "pi",
                                         record: deleteTarget,
                                         trigger: deleteTrigger.current,
                                     });

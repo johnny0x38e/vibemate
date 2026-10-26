@@ -6,7 +6,19 @@ never changes an Agent file. The separate **Manage Pi** action previews and
 confirms deployment, update, native enable/disable, revoke and retained-entry
 restore. None of these actions starts, installs or contacts a server.
 
-Grok Build deployment remains unimplemented. Task status is recorded only in
+Grok Build deployment remains unimplemented. **Preview for Grok Build** reads
+`GROK_HOME|~/.grok/config.toml` through Rust discovery and the shared bounded target
+reader. It checks central revisions and TOML containers, proposes masked
+stdio/HTTP entries, rejects exact existing names and unusable Grok tool prefixes,
+and reports the independent personal disable list. The strict IPC request accepts
+only identity/revision; the client rejects unknown fields, mismatched identities,
+invalid targets and unmasked env/header values. The bilingual read-only summary
+opens separate details explicitly described as a JSON view of the proposed TOML
+table, not a complete file or write approval. Errors offer retry or list reload;
+closing/hiding invalidates late reads, and nested dialogs return focus. Relative
+cwd and leading home expansion are explicitly refused until their Grok semantics
+are verified. No OS credentials are loaded, files changed or servers started.
+Task status is recorded only in
 [`plans/todo.md`](plans/todo.md); the implementation decisions are in
 [`plans/mcp-deployment.md`](plans/mcp-deployment.md).
 
@@ -167,6 +179,15 @@ disabled and no Provider credentials. Both central definitions were deleted only
 after revoke; no intent remained pending, unrelated native content was preserved
 and all temporary servers exited. No Agent inference session or external service
 was involved.
+
+Grok preview adds isolated default/override target, malformed/oversized file,
+symlink, stale-revision and no-write tests, strict client response/masking tests,
+and UI retry/reload, close/hide, language-preservation and focus behavior tests.
+Chrome DevTools inspected its actual components with synthetic IPC data in both
+locales/themes, 720×560 long-name/path cases, a 1080×760 list, nested Escape/focus
+return and keyboard retry. This caught and fixed action groups squeezing the row
+identity at the minimum size. These mocks do not prove actual Grok WebView IPC,
+native deployment or connectivity; no Grok write path is exposed yet.
 
 Browser fixtures separately inspected English/Chinese, light/dark, 720×560,
 long names/paths, masked nested details, keyboard focus/Escape and interruption

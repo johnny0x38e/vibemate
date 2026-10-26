@@ -1,4 +1,6 @@
 //! Fault-injection tests for central definitions, with temporary DBs and fake credentials.
+mod grok_preflight_tests;
+mod grok_preview_tests;
 mod pi_preflight_tests;
 mod pi_preview_tests;
 

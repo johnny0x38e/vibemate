@@ -315,6 +315,10 @@ P24.b = Claude Code；P24.c = Pi；P24.d = Grok Build。服务商模型是唯一
 
 ### Task P33: 向 Grok Build 注入 MCP 配置
 
+**状态：** 只读预览已交付：Rust 按发现规则读取 `GROK_HOME|~/.grok/config.toml`，对中央 revision、有界 TOML、精确名称及工具前缀做校验；严格 IPC 只收 identity/revision，返回脱敏 stdio/HTTP 提案及 `disabled_mcp_servers` 独立关闭状态。中央列表提供 Grok 双语摘要／详情、错误重试／重新加载、关闭／隐藏后的过期保护和焦点返回；详情明确是 TOML 表的 JSON 表示。窄窗口操作区移至名称下方。不读取 OS 凭据、不执行服务器、不写入配置；相对 cwd／前导 `~/` 仍因语义未核实而明确拒绝。尚不能部署，下一片推进审批、所有权、安全写入／撤销／恢复／中断核对与引用保护。设计见 [mcp-deployment](mcp-deployment.md#grok-read-only-preflight-and-preview-p33)。
+
+**Verification：** 9 项 preflight 与 6 项隔离文件预览回归通过；全量 Rust 750 通过、4 忽略，fmt、Clippy `-D warnings`、完整 `check:frontend`（1260 项 UI 测试）与锁定 no-bundle macOS 桌面构建通过；既有 chunk >500 kB 警告仍在。Chrome DevTools 隔离合成 IPC 检查完成中英浅／深色、720×560 长名称／路径、1080×760 列表、详情逐层 Escape／焦点返回及键盘重试；ego-browser／agent-browser 本机不可用，未冒充真实 WebView IPC。本机 Grok 1.0.70，真实根手册仍标为 1.0.67；临时 HOME/GROK_HOME/cwd、禁网 sandbox 中的原生 `mcp add --transport http` 确认 `url/enabled` 形状、没有 `type`。未启动 MCP、推理、doctor 或 Provider 请求，未改真实 Grok 配置；实际 Tauri 预览 IPC、原生连接及 Windows/Linux 尚未验收。
+
 **Acceptance criteria:**
 
 - [ ] 原生支持时独立映射传输与参数，不能照搬其他适配器配置或丢弃不支持字段。

@@ -26,6 +26,28 @@ pub(crate) async fn preview_pi_mcp_registration(
     .map_err(|_| PiMcpPreviewError::OperationFailed)?
 }
 
+/// Preview the Rust-selected Grok TOML target without keys, writes or execution.
+#[tauri::command]
+pub(crate) async fn preview_grok_mcp_registration(
+    app: tauri::AppHandle,
+    request: crate::mcp::PreviewGrokMcpRequest,
+) -> Result<crate::mcp::GrokMcpPreview, crate::mcp::GrokMcpPreviewError> {
+    use crate::mcp::GrokMcpPreviewError;
+    let environment =
+        super::agents::environment(&app).map_err(|_| GrokMcpPreviewError::TargetUnavailable)?;
+    tauri::async_runtime::spawn_blocking(move || {
+        let status = app
+            .try_state::<crate::storage::StorageStatus>()
+            .ok_or(GrokMcpPreviewError::DefinitionUnavailable)?;
+        let storage = status
+            .storage()
+            .map_err(|_| GrokMcpPreviewError::DefinitionUnavailable)?;
+        crate::mcp::preview_grok_registration(storage, &environment, &request)
+    })
+    .await
+    .map_err(|_| GrokMcpPreviewError::OperationFailed)?
+}
+
 /// Read central MCP metadata, without executing servers or opening credentials.
 #[tauri::command]
 pub(crate) async fn list_mcp_definitions(

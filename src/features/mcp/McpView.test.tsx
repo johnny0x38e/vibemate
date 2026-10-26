@@ -23,6 +23,16 @@ import {
 } from "../../lib/desktop/mcp";
 import { McpView } from "./McpView";
 import {
+    GrokMcpPreviewError,
+    previewGrokMcpRegistration,
+    type GrokMcpPreview,
+} from "../../lib/desktop/grokMcpPreview";
+import { grokMcpPreview } from "../../test/grokMcpFixtures";
+vi.mock(import("../../lib/desktop/grokMcpPreview"), async (original) => ({
+    ...(await original()),
+    previewGrokMcpRegistration: vi.fn(),
+}));
+import {
     PiMcpError,
     applyPiMcpChange,
     readPiMcpState,
@@ -95,6 +105,12 @@ async function setup(
     );
 }
 beforeEach(() => {
+    vi.mocked(previewGrokMcpRegistration)
+        .mockReset()
+        .mockResolvedValue({
+            ...grokMcpPreview,
+            proposal: { ...grokMcpPreview.proposal, revision: row.revision },
+        });
     vi.mocked(readPiMcpState).mockReset().mockResolvedValue(emptyPiMcpState);
     vi.mocked(readPiMcpHistory)
         .mockReset()
@@ -113,6 +129,84 @@ beforeEach(() => {
 });
 afterEach(() => {
     cleanup();
+});
+
+test("Grok preview uses the list revision and closes without central or Pi mutation", async () => {
+    const homeRef = createRef<ModuleNavigationHandle>();
+    await setup("en", homeRef);
+    const trigger = await screen.findByRole("button", {
+        name: "Preview “Tools” for Grok Build",
+    });
+    trigger.focus();
+    fireEvent.click(trigger);
+    expect(await screen.findByText(grokMcpPreview.target.path)).toBeDefined();
+    expect(previewGrokMcpRegistration).toHaveBeenCalledWith(
+        row.id,
+        row.revision,
+    );
+    expect(homeRef.current?.openHome()).toBe(false);
+    fireEvent.click(screen.getByRole("button", { name: "Close" }));
+    await waitFor(() => {
+        expect(screen.queryByRole("dialog")).toBeNull();
+        expect(document.activeElement).toBe(trigger);
+    });
+    expect(save).not.toHaveBeenCalled();
+    expect(deleteMcpDefinition).not.toHaveBeenCalled();
+    expect(applyPiMcpChange).not.toHaveBeenCalled();
+    expect(previewPiMcpChange).not.toHaveBeenCalled();
+});
+
+test("Grok stale revision reloads the list instead of editing or deploying", async () => {
+    vi.mocked(previewGrokMcpRegistration).mockRejectedValue(
+        new GrokMcpPreviewError("revision_conflict"),
+    );
+    await setup();
+    fireEvent.click(
+        await screen.findByRole("button", {
+            name: "Preview “Tools” for Grok Build",
+        }),
+    );
+    await screen.findByRole("alert");
+    const before = list.mock.calls.length;
+    fireEvent.click(screen.getByRole("button", { name: "Reload definitions" }));
+    await waitFor(() => {
+        expect(screen.queryByRole("dialog")).toBeNull();
+        expect(list.mock.calls.length).toBeGreaterThan(before);
+    });
+    expect(save).not.toHaveBeenCalled();
+});
+
+test("hiding Grok preview invalidates its pending result and never reopens it", async () => {
+    let finish: (value: GrokMcpPreview) => void = () => {};
+    vi.mocked(previewGrokMcpRegistration).mockReturnValue(
+        new Promise((resolve) => {
+            finish = resolve;
+        }),
+    );
+    const i18n = await createAppI18n("en");
+    const view = (hidden: boolean) => (
+        <StrictMode>
+            <I18nextProvider i18n={i18n}>
+                <McpView hidden={hidden} />
+            </I18nextProvider>
+        </StrictMode>
+    );
+    const rendered = render(view(false));
+    fireEvent.click(
+        await screen.findByRole("button", {
+            name: "Preview “Tools” for Grok Build",
+        }),
+    );
+    expect(screen.getByRole("dialog")).toBeDefined();
+    rendered.rerender(view(true));
+    await act(async () => {
+        finish(grokMcpPreview);
+        await Promise.resolve();
+    });
+    rendered.rerender(view(false));
+    expect(screen.queryByRole("dialog")).toBeNull();
+    expect(screen.queryByText(grokMcpPreview.target.path)).toBeNull();
+    expect(save).not.toHaveBeenCalled();
 });
 
 test("hiding MCP closes its preview and ignores a late native result", async () => {

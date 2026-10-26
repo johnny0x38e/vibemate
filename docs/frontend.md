@@ -953,6 +953,18 @@ lint, type, behavior and applicable build checks remain required.
 
 ## Central MCP management
 
+The central list also offers a separate read-only Grok Build preview through
+`McpGrokPreview` and `desktop/grokMcpPreview.ts`. Rust selects the user TOML target;
+the client validates an exact Zod response, matching identity/revision and
+placeholder-only env/header values. A field summary and nested JSON view of the
+proposed TOML table distinguish the personal disable list from the proposed native
+flag. Retry/list reload, per-attempt cleanup, hidden-dialog invalidation and
+focus return mirror existing read-only review behavior without sharing Pi's
+runtime semantics or exposing an apply action. Language switches preserve the
+open review and do not trigger another file read. At narrow desktop widths MCP
+rows put the action group below the identity so the additional preview control
+does not squeeze long names. No capability/CSP changes were required.
+
 `src/features/mcp/` implements central MCP metadata. The sidebar opens a metadata
 list lazily on first visit. New/edit pages collect display name (the server
 identifier is derived on first save and never displayed in either form; edits

@@ -33,7 +33,7 @@ Runtime notices deliberately do not infer project trust, active CLI flags or
 replacement extensions from the user-level file. Browser fixtures exercise the
 rendered UI only; they do not prove native IPC or connectivity.
 
-## Current delivery goal: complete the Pi workflow
+## Delivered Pi workflow
 
 The maintainer requires the whole Pi flow in this implementation, not another
 preview-only delivery. Grok remains P33, outside this change.
@@ -108,6 +108,50 @@ evidence. After explicit user approval, local stdio/loopback HTTP discovery,
 disable, selected-result restore and revoke passed real Pi CLI checks against
 native UI writes; the recorded outcome is in todo.md.
 No UI may claim deployment before the write path is delivered.
+
+## Grok read-only preflight and preview (P33)
+
+The first slice provides a pure Rust proposal against caller-supplied, bounded
+user-level TOML bytes and a revision-checked central definition. The second slice
+connects it to a Rust-selected target and a read-only UI, not a write approval or
+deployed registration. Status remains in `todo.md`.
+
+Map stdio `command/args/env/cwd/enabled` and HTTP `url/headers/enabled`
+independently from Pi. Return only the new masked entry, never the existing file
+or OS credential references. Accept absent/blank TOML as an empty document;
+reject malformed UTF-8/TOML, non-table `mcp_servers`, malformed
+`disabled_mcp_servers`, and existing exact names, including disabled or malformed
+entries. Grok keeps hyphens and underscores in catalog names; do not import Pi's
+hyphen/underscore collision rule. Reject digit-leading names, embedded `__` and
+trailing underscores because Grok cannot admit their qualified tools.
+
+Report a matching `disabled_mcp_servers` entry without removing it or claiming
+that `enabled = true` makes the server active. Reject `${...}` in public stdio
+fields instead of silently introducing runtime expansion. Until working-directory
+and tilde behavior is verified, refuse relative/tilde cwd and leading `~/` in
+commands/arguments; do not drop or silently resolve these inputs. Do not read OS
+values, run commands/servers, contact endpoints or mutate central/native data.
+
+Focused regression tests must cover both transports, masking, exact names versus
+Pi normalization, malformed containers, stale/deleted definitions, dynamic/path
+rejection and personal disable state. Run full Rust checks before handing off.
+The delivered read-only preview resolves `GROK_HOME|~/.grok/config.toml` using Agent
+discovery and the shared bounded target reader. Its strict IPC accepts only a
+central identity/revision and returns target metadata plus the masked proposal.
+A separate **Preview for Grok Build** action on central rows leaves Pi management
+unchanged. The bilingual read-only dialog shows a field summary, personal-disable
+notice and a nested entry-details dialog, with loading, safe errors, retry,
+reload, focus return and stale-read protection when closed/hidden. Details are
+explicitly a JSON representation of the proposed TOML table, not a full file.
+
+Verify isolated-root/default/override/symlink/size and no-write Rust behavior,
+strict response masking/identity/shape checks, and UI retry/close/hide/keyboard
+behavior. Inspect both locales/themes and long content at 720×560. This command
+needs no credential lock, process permission, capability or CSP expansion because
+it only reads the Rust-selected target and central metadata.
+
+The reviewed write/ownership/history/recovery/deletion workflow follows; do not
+expose a management or connected state before those behaviors exist.
 
 ## Evidence and risks
 

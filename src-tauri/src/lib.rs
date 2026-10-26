@@ -111,6 +111,7 @@ pub fn run() {
             commands::mcp_deploy::apply_pi_mcp_change,
             commands::mcp_deploy::recover_pi_mcp_change,
             commands::mcp::preview_pi_mcp_registration,
+            commands::mcp::preview_grok_mcp_registration,
             commands::mcp::list_mcp_definitions,
             commands::mcp::get_mcp_definition,
             commands::mcp::save_mcp_definition,
