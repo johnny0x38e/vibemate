@@ -163,7 +163,8 @@
         "backLabel": "返回服务商列表",
         "list": {
             "label": "已保存的服务商配置",
-            "selectedModels": "已添加模型 {{count}}",
+            "selectedModels_one": "已添加模型 {{count}}",
+            "selectedModels_other": "已添加模型 {{count}}",
             "edit": "编辑",
             "editLabel": "编辑 {{name}}",
             "deleteLabel": "删除「{{name}}」"

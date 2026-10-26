@@ -121,11 +121,12 @@
     justify-content: flex-start;
     gap: 8px;
     box-sizing: border-box;
-    /* Same width on every row so the first child (dot) shares one x.
-       Sized for the longest status label (未发现 / Checking… / version). */
-    width: 10rem;
-    min-width: 10rem;
-    max-width: 10rem;
+    /* Same width on every row so the first child (dot) shares one x. Sized for
+       the longest status label (未发现 / Checking… / version) while leaving the
+       English model summary enough room at the minimum window width. */
+    width: 6rem;
+    min-width: 6rem;
+    max-width: 6rem;
     margin: 0;
     padding: 0;
     color: var(--color-summary);

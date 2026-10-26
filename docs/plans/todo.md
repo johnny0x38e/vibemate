@@ -16,7 +16,7 @@
 8. P24.d 首批已合入本机：Grok Build 只在原生字段缺失时写入已声明的 `reasoning_efforts` 列表与列表内默认档；已有数组、旧字段和全局默认保持不变；隔离 macOS Chat/Responses 已确认原生菜单、列表默认档与运行中选择更新，本地 stub 已核实 backend 字段/默认档及运行中切档后的下一请求；Grok 自身将选用值全局持久化并供新会话读取，真实 Provider 接受仍待验证。
 9. skills.sh 市场浏览/安装、Git revision 检查与 P30 应用更新已交付。Skill 方向参考 [skills-marketplace-reference](skills-marketplace-reference.md)；不引入 preset/工作区。
 10. P35 非 MCP／Grok 引用与 P32/P33 MCP 写入、P34 Skill 恢复与 Overview `RecoveryHub`（schema v34）均已合入本机；统一入口只发现并跳转到对应模块，不重放写入。维护者决定桌面／真实连接验收后置；见 [phase-1](phase-1.md)、[skill-recovery](skill-recovery.md)。
-11. P24 可写代码已收口：未核实绑定不生成厂商 map／不猜测 Claude 容量通道；真实 Provider 接受与维护者 Tauri 验收仍后置。下一条可写代码主线：P35 验收标准勾选／收尾缺口 → P36；桌面与 P37–P39 发布前专项靠后。
+11. P24 可写代码已收口：未核实绑定不生成厂商 map／不猜测 Claude 容量通道；真实 Provider 接受与维护者 Tauri 验收仍后置。P35 代码侧引用约束已复核收口（2026-10-26）：Pi 保存档位按惰性偏好保留，中央删除不重写 Agent 文件。P36 代理侧浏览器检查已完成：Providers/Models、Agents、Skills、MCP、Settings、Overview 均检查 720×560 与窄宽度下的长内容、分页、错误态和键盘焦点，并修复列表挤压、英文单复数与 Agent 摘要截断。实际 Tauri 与维护者桌面验收待做；桌面与 P37–P39 发布前专项靠后。
 
 ## 文档整理（2026-10-19）
 
@@ -158,7 +158,7 @@ P24.b = Claude Code；P24.c = Pi；P24.d = Grok Build。服务商模型是唯一
 - [x] **P24.c 本轮纠偏：** 官方 DeepSeek Chat `deepseek-flash` 的所有已声明 `xhigh/max` 独立注入映射，不再只写选中默认档的映射；保留用户 map/null 与原有请求参数。实现与回归检查通过；代理隔离 Pi 原生菜单与会话切换检查通过，维护者 Tauri 预览/应用/恢复及真实请求验收仍待执行。
 - [x] **P24.c 原生菜单与选择：** Pi 1.4.0 隔离 macOS 会话通过 11 项断言：扩展档位显示与 `max` 选择、每模型启动默认档优先于全局值、同 ID 跨 Provider 默认隔离、用户 null 排除与拒绝不可用档、切回模型重新采用保存档位；会话选择不改保存档位或模型文件。合成密钥、临时目录、禁网 sandbox，无 Provider 请求。步骤与边界见 [Pi 契约](../integrations/pi.md#p24c-隔离原生菜单与切换验证)。
 - [x] **P24.c 厂商映射补充：** 官方 DeepSeek Chat 的精确 `deepseek-v4-pro` 使用 `xhigh→high/max→max`；官方 OpenRouter Chat 对明确列表注入 `xhigh→xhigh/max→max`，独立于默认选择并保留用户 map/null。4 个安装 SDK 发送前载荷样本确认 DeepSeek 顶层与 OpenRouter 嵌套努力字段，fetch 调用为 0；Rust 回归覆盖过期审批、双文件恢复与协议/base/ID 边界，前端覆盖选项与预览参数。
-- [x] **P24.c 未核实绑定：** 其它绑定不生成厂商 map（Rust 回归覆盖）；真实 Provider 接受与维护者 Tauri 预览/应用/恢复验收仍待完成；模型/服务商删除的键清理随 P35。
+- [x] **P24.c 未核实绑定：** 其它绑定不生成厂商 map（Rust 回归覆盖）；真实 Provider 接受与维护者 Tauri 预览/应用/恢复验收仍待完成。模型/服务商删除不重写 Pi 的 `modelThinkingLevels`；P35 复核确认它是惰性偏好而非存活绑定，残留键可在 Pi 或配置历史中清理。
 - [x] **P24.d 首批已交付：** 非空中央 `Listed` 档位在原生 `reasoning_efforts` 缺失、推理支持为 supported、安装参考含该字段且未被 `supports_reasoning_effort = false` 禁用时，写入 `value/label`；列表内中央默认档标 `default = true`。已有数组、旧布尔/单值字段、全局 `[models]` 与其他 alias 保持不变；`any`、空列表和未知支持不展开。图像能力继续映射到 `vision`。
 - [x] **P24.d 原生菜单与选择：** Grok 1.0.67 的隔离 macOS Chat/Responses 会话均显示注入列表、启动选用列表默认档，并通过 `/effort` 完成 `high → max → high`；重新打开菜单确认活动档位。10 项断言通过，使用合成密钥、临时 HOME/GROK_HOME/cwd，sandbox 拒绝网络及真实配置读取；无模型提示词或 Provider 请求。复验步骤见 [Grok 契约](../integrations/grok-build.md#p24d-隔离原生菜单与切换验证)。
 - [x] **P24.d backend 载荷：** 隔离 macOS 的两个 backend 分别以列表默认、显式 high/max 发送合成样本到回环 HTTP stub，6 项通过；Chat 输出 `reasoning_effort`，Responses 输出 `reasoning.effort`。stub 故意返回 400 后终止，不联系真实 Provider、不代表推理成功；辅助请求与目标 API ID 分别核对。
@@ -355,21 +355,38 @@ P24.b = Claude Code；P24.c = Pi；P24.d = Grok Build。服务商模型是唯一
 
 ### Task P35: 约束被引用配置的删除
 
-**状态：** Provider/Model/Skill 非 MCP 部分已实现（2026-10-23）：引用查询、删除阻止和失效绑定清除已完成并通过自动化检查。P32／P33 已实现 Pi／Grok MCP 跨目录注册／未完成意图引用展示及事务内删除拒绝；维护者桌面验收仍待做。
+**状态：** 代码与自动化检查已收口（2026-10-26）：Provider/Model 的 Pi/Grok 引用查询、删除阻止和失效绑定清除；Skill 部署与未完成 journal 的删除阻止；Pi/Grok MCP 跨目录注册与未完成意图的引用展示及事务内删除拒绝。维护者桌面验收仍待做，不计为已验收。
 
-**Description:** 完善 Provider/Model/Skill/MCP 的删除行为，防止已有 Agent 引用突然失效。P32 已实现 Pi MCP 跨目录注册／未完成意图引用展示及事务内删除拒绝；其余 Provider/Model/Skill/Grok MCP 引用与清理仍待完成，不整体勾选。
+**Description:** 完善 Provider/Model/Skill/MCP 的删除行为，防止已有 Agent 引用突然失效。中央删除只改 vibemate 存储与凭据库，不重写 Agent 配置；仍存活的绑定或受管部署必须先通过对应模块解除。Pi 的 `modelThinkingLevels` 是模型启动偏好，不是绑定，删除后保留为惰性键。
 
 **Acceptance criteria:**
 
-- [ ] 展示被引用关系，禁止静默级联删除或自动重写全部 Agent 配置。
-- [ ] 用户选择先解除绑定/撤销受管部署，再按对应机制清理；失败保留可恢复状态。
-- [ ] 凭据清理与数据库删除遵守补偿约定；用户文件和共享凭据不误删。
+- [x] 展示被引用关系，禁止静默级联删除或自动重写全部 Agent 配置。
+- [x] 用户选择先解除绑定/撤销受管部署，再按对应机制清理；失败保留可恢复状态。
+- [x] 凭据清理与数据库删除遵守补偿约定；用户文件和共享凭据不误删。
 
-**Verification:** 引用/清理失败测试和删除确认 UI 测试；`check:frontend` 与 Rust fmt/Clippy。
+**Verification:** 引用查询、活动/失效/不可读绑定、事务内拒绝、失效清除、删除补偿与失败重试均有 Rust 回归；Provider/Model/Skill/MCP 删除确认及引用列表有前端行为测试。Rust 回归新增断言：清除失效 Pi 绑定并删除 Provider 后，`settings.json` 的保存档位字节不变。本轮完整检查：Rust 767 项通过、4 项忽略，fmt/Clippy `-D warnings`、`check:frontend`（66 文件、1272 项）与锁定 no-bundle 桌面构建通过。维护者桌面验收仍未执行。
 
 **Dependencies:** P21,P23,P30,P33。
 
 ### Task P36: 检查前端实际可用性
+
+**状态：** 代理侧浏览器检查已完成（2026-10-26）；实际 Tauri 交互与维护者桌面验收待做，验收项暂不整体勾选。
+
+**页面切片：**
+
+- [x] Providers/Models：720×560 中英文、520×640 窄宽度下的长名称、长模型 ID、加载更多、列表错误态和模型列表错误态可操作且反馈明确。
+- [x] Provider 删除确认初始焦点在「取消」，Escape 关闭后焦点返回行操作；创建页进入时标题聚焦，Tab 可达保存、页签与表单。
+- [x] Agents：720/520 中英文列表、长 Provider/model 摘要、详情与「安装与路径」页、发现失败态；修复窄窗口英文摘要被状态栏挤压。
+- [x] Skills：列表、长描述/来源、详情、部署预览、恢复面板、删除确认与焦点返回。
+- [x] MCP：12 行长列表、长名称/路径、520 宽度下操作按钮换行、编辑表单与长参数/凭据行、删除确认、Pi 注册管理弹窗。
+- [x] Settings：常规/关于页、方向键切换页签、720/520 下主题色板换行、长日志路径。
+- [x] Overview：五张计数卡与 RecoveryHub 多行汇总、720/520 下的堆叠与跳转按钮。
+- [x] 修复窄列表下标签组把名称列压到 0 宽、行高被撑到数千像素的问题：列表自身按可用宽度把协议/模型数标签移到下一行。
+- [x] 修复英文「1 added models」：改为单数/复数资源键，中文保持一个计数形式。
+- [x] 修复 Agent 列表状态栏过宽导致的英文摘要截断：状态栏收窄，`Own configuration` 与 `No configuration summary` 在 720×560 完整显示。
+
+本轮使用临时 Vite 页注入合成 IPC 数据检查；临时页、截图与测试数据已删除，未读取真实凭据或 Agent 配置。`ProvidersView.test.tsx` 新增单数文案回归。加载骨架、空列表、分页边界与缩放主要由既有行为测试覆盖，仍需实际 Tauri 桌面复核。
 
 **Description:** 用真实业务页面检查长内容、键盘、分页与错误状态，修复有证据的问题。
 
@@ -379,7 +396,7 @@ P24.b = Claude Code；P24.c = Pi；P24.d = Grok Build。服务商模型是唯一
 - [ ] 表单与确认界面键盘可达、焦点恢复正确，状态不只靠颜色；符合严格样式规则。
 - [ ] 仅修复发现的问题；跨多个 feature 时先按页面拆子任务。
 
-**Verification:** 受影响页面行为测试与 `pnpm run check:frontend`；ego-browser 检查最小窗口、键盘、长内容与错误状态；实际 Tauri 确认原生行为。
+**Verification:** 代理侧用临时 Vite 页与合成 IPC 数据检查全部页面的 720×560/520×640 中英文长内容、分页、错误态与键盘焦点；临时页、截图与测试数据已删除。完整 `check:frontend`（66 文件、1272 项）、Rust 767 项通过/4 项忽略、fmt/Clippy `-D warnings` 与锁定 no-bundle 桌面构建通过。实际 Tauri 交互、缩放与维护者桌面验收仍待做，因此验收项暂不整体勾选。
 
 **Dependencies:** P34,P35。
 

@@ -158,6 +158,10 @@ fn stale_provider_bindings_can_be_cleared_before_deleting() {
     let record = create_with_store(&storage, &store, "Stale");
     let pi_root = directory.0.join("empty-pi");
     fs::create_dir_all(&pi_root).expect("pi root");
+    // A saved thinking level is a Pi preference, not a live binding. Deleting
+    // the central record must leave it in place rather than rewrite the file.
+    let settings = r#"{"modelThinkingLevels":{"vibemate-Pi-test/deepseek-flash":"high"}}"#;
+    fs::write(pi_root.join("settings.json"), settings).expect("pi settings");
 
     storage
         .lock()
@@ -189,6 +193,11 @@ fn stale_provider_bindings_can_be_cleared_before_deleting() {
     delete_provider(&storage, &store, delete_request(record.id.as_str(), 1)).expect("delete");
     assert_eq!(table_rows(&storage, "provider_instance"), 0);
     assert_eq!(store.stored(&record.id.credential_reference()), None);
+    assert_eq!(
+        fs::read_to_string(pi_root.join("settings.json")).expect("read settings"),
+        settings,
+        "central deletion leaves the saved Pi thinking level untouched"
+    );
 }
 
 #[test]

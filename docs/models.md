@@ -156,7 +156,11 @@ no binding row remains. A stale confirmation fails without touching the
 credential store; a definite database failure restores the key; an unknown
 outcome reloads the list. Agent configuration files are never read or written by
 the delete itself; the reference check only reads the files to prove whether an
-entry is still present. MCP references remain part of feat-mcp/P35.
+entry is still present. Pi's saved `modelThinkingLevels` key for a removed model
+is a preference rather than a live binding, so it stays in `settings.json` and
+becomes inert; it can be cleared in Pi's settings file or by restoring an earlier
+configuration version. MCP definitions have their own cross-directory reference checks during
+deletion.
 
 Model removal follows the same rule: a Grok alias or a live Pi model entry blocks
 removal, and a stale Grok alias can be cleared from the Models tab before saving.

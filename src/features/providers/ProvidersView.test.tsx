@@ -436,6 +436,12 @@ test("shows a loading state, then saved rows distinguished by id, never as conne
     expect(document.body.textContent).not.toMatch(/已连接|可用/);
 });
 
+test("uses singular wording for one added model", async () => {
+    list.mockResolvedValue(page([row("a", { selectedModelCount: 1 })]));
+    await mount();
+    expect(screen.getByText("1 added model")).toBeDefined();
+});
+
 test("shows an empty state", async () => {
     list.mockResolvedValue(page([]));
     await mount();

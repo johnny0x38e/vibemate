@@ -67,8 +67,11 @@ vibemate 的写入规则：
   DeepSeek Chat 官方 schema 允许 `minimal→low`、`medium/xhigh→high`，并接受 `low/high/max`；
   Pi 的基础档位透传依赖这些兼容规则。OpenRouter Chat 使用网关努力值，不等同于直连上游值。
   Command Code 与其它协议的厂商范围仍需按模型核实。
-- 没有「清除」动作，只能选择「不覆盖」保留原值或选择一个档位。删除模型或服务商不会自动删除该键，
-  这属于尚未完成的 P35 引用约束。
+- 没有「清除」动作，只能选择「不覆盖」保留原值或选择一个档位。删除中央模型或服务商不会重写该键：
+  `modelThinkingLevels` 是 Pi 的启动偏好，不是仍存活的绑定；P35 的删除约束只阻止仍被 Pi 模型条目或
+  Grok alias 使用的中央记录。对应 Provider/model 被删除后，残留键不会再被 Pi 采用，也不会影响其它模型；
+  需要清理时可在 Pi 的 `settings.json` 中修改，或从配置历史恢复一个更早的 `settings.json`。vibemate 的中央删除本身
+  只改 SQLite 与凭据库，不写任何 Agent 文件。
 - Pi 模型定义没有工具调用字段，因此不写工具声明；这不代表模型不能调用工具。
 - 不提供 temperature/top_p、请求输出或推理 token 数编辑器，保留用户原有请求参数。
   模型最大输出仍映射为 `maxTokens`。源码显示 sampling 输出键在动态上下文限制后合并，

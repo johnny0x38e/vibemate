@@ -163,7 +163,8 @@
         "backLabel": "Back to provider list",
         "list": {
             "label": "Saved provider configurations",
-            "selectedModels": "{{count}} added models",
+            "selectedModels_one": "{{count}} added model",
+            "selectedModels_other": "{{count}} added models",
             "edit": "Edit",
             "editLabel": "Edit {{name}}",
             "deleteLabel": "Delete {{name}}"

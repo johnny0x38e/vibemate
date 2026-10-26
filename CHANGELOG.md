@@ -187,6 +187,14 @@ GitHub release notes are extracted from the matching version section only.
 
 ### Fixed
 
+- Provider rows keep their name column readable in a narrow window. The protocol and model-count chips now move to a second line based on the list's own width, including when the sidebar is expanded, so a long name or wide tags can no longer collapse the text to one character per line.
+
+- The English provider list uses "1 added model" for a single saved model and the plural form for other counts. Simplified Chinese keeps its single counted wording.
+
+- Agent list rows keep their secondary line readable at the minimum window width. The status rail is narrower, so "Own configuration" and "No configuration summary" fit in English; a long Provider · model summary still ends with an ellipsis and keeps its full text in the title.
+
+- Deleting a Provider or saved model leaves Pi's saved `modelThinkingLevels` entry untouched. It is a startup preference rather than a live binding; central deletion only changes vibemate storage and credentials, and never rewrites an Agent file. A regression test records this boundary.
+
 - Masked existing credential values in Claude Code plan changes before they cross IPC, including the old direct API key that OpenRouter clears. Repeated previews no longer carry the old key alongside the new credential placeholder.
 
 - Configuration selection now moves the current badge to the original saved version without adding a visible restore row. Matching uses complete successful written results rather than pre-write snapshots, and Provider/model attribution no longer depends on the selected page.
