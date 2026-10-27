@@ -35,9 +35,11 @@ fn grok_preview_resolves_default_without_creating_files_or_directories() {
         ..Default::default()
     };
     let plan = preview_grok_registration(&f.storage, &environment, &selection(&row)).unwrap();
+    // Match production's component joins, including Windows separators.
+    // `join(".grok/config.toml")` keeps the slash inside one component on Windows.
     assert_eq!(
         plan.target.path,
-        f.path.join(".grok/config.toml").to_str().unwrap()
+        f.path.join(".grok").join("config.toml").to_str().unwrap()
     );
     assert!(!plan.target.exists);
     assert_eq!(plan.target.content_digest, None);

@@ -215,7 +215,9 @@ fn claude_code_deploy_uses_its_config_root_and_records_ownership() {
         preview.target_path,
         fixture
             .home
-            .join(".claude/skills/claude-skill")
+            .join(".claude")
+            .join("skills")
+            .join("claude-skill")
             .to_string_lossy()
     );
     assert!(preview.symlink_available);
@@ -681,6 +683,10 @@ fn crash_after_disable_removal_with_stale_ownership_needs_record_clear() {
         .apply(reviewed_from_preview(&preview, SkillDeployMode::Symlink))
         .expect("apply");
     let target = fixture.target(SkillDeployAgent::Pi, &record.name);
+    // Windows DeleteFileW refuses the directory link apply created.
+    #[cfg(windows)]
+    fs::remove_dir(&target).expect("remove target");
+    #[cfg(not(windows))]
     fs::remove_file(&target).expect("remove target");
     let op_id = "b".repeat(32);
     insert_journal(

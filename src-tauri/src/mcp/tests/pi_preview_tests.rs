@@ -20,9 +20,16 @@ fn pi_preview_resolves_default_without_creating_a_target() {
         ..Default::default()
     };
     let plan = preview_pi_registration(&f.storage, &environment, &input(&row)).unwrap();
+    // Match production's component joins, including Windows separators.
+    // `join(".pi/agent/mcp.json")` keeps those slashes inside one component on Windows.
     assert_eq!(
         plan.target.path,
-        f.path.join(".pi/agent/mcp.json").to_str().unwrap()
+        f.path
+            .join(".pi")
+            .join("agent")
+            .join("mcp.json")
+            .to_str()
+            .unwrap()
     );
     assert!(!plan.target.exists);
     assert_eq!(plan.target.content_digest, None);

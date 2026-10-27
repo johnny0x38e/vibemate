@@ -783,8 +783,9 @@ fn symlink_points_to(link: &Path, managed: &Path) -> Result<bool, SkillError> {
 fn probe_symlink_available(parent: &Path, managed: &Path) -> Result<bool, SkillError> {
     fs::create_dir_all(parent).map_err(|_| SkillError::WriteFailed)?;
     let probe = parent.join(SYMLINK_PROBE);
-    let _ = fs::remove_file(&probe);
-    let _ = fs::remove_dir_all(&probe);
+    // The probe points at the managed skill tree. Remove only that link; a
+    // recursive delete would follow it and erase the library copy.
+    let _ = remove_path(&probe);
     match create_dir_symlink(managed, &probe) {
         Ok(()) => {
             let _ = remove_path(&probe);
@@ -814,7 +815,19 @@ fn remove_path(path: &Path) -> Result<(), SkillError> {
         Err(error) if error.kind() == std::io::ErrorKind::NotFound => return Ok(()),
         Err(_) => return Err(SkillError::WriteFailed),
     };
-    if meta.file_type().is_symlink() || meta.is_file() {
+    let file_type = meta.file_type();
+    if file_type.is_symlink() {
+        // `remove_file` uses DeleteFileW, which refuses a directory symbolic
+        // link. RemoveDirectory deletes that link and leaves its target alone.
+        #[cfg(windows)]
+        {
+            use std::os::windows::fs::FileTypeExt;
+            if file_type.is_symlink_dir() {
+                return fs::remove_dir(path).map_err(|_| SkillError::WriteFailed);
+            }
+        }
+        fs::remove_file(path).map_err(|_| SkillError::WriteFailed)
+    } else if meta.is_file() {
         fs::remove_file(path).map_err(|_| SkillError::WriteFailed)
     } else if meta.is_dir() {
         fs::remove_dir_all(path).map_err(|_| SkillError::WriteFailed)
