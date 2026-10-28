@@ -127,6 +127,7 @@ pub fn run() {
             commands::skills::install_skill,
             commands::skills::search_marketplace_skills,
             commands::skills::list_marketplace_skills,
+            commands::skills::get_marketplace_skill_detail,
             commands::skills::preview_marketplace_install,
             commands::skills::install_marketplace_skill,
             commands::skills::list_skills,

@@ -1,0 +1,385 @@
+/* Marketplace secondary page: sticky toolbar, fixed-size card grid, paging. */
+
+.layout {
+    display: flex;
+    flex: 1;
+    flex-direction: column;
+    min-height: 0;
+    margin-top: var(--page-content-gap);
+    gap: var(--space-md);
+}
+
+.description {
+    flex-shrink: 0;
+    margin: 0;
+    color: var(--color-text);
+    font-size: 0.8125rem;
+    line-height: 1.55;
+    overflow-wrap: anywhere;
+}
+
+.toolbar {
+    display: grid;
+    flex-shrink: 0;
+    grid-template-columns: minmax(9rem, 0.36fr) minmax(0, 1fr);
+    align-items: center;
+    gap: var(--space-sm) var(--space-md);
+    /* Stick under the secondary-page header while the grid scrolls. */
+    position: sticky;
+    top: 0;
+    z-index: 1;
+    padding-bottom: var(--space-sm);
+    background: var(--color-background);
+}
+
+.label {
+    color: var(--color-summary);
+    font-size: 0.8125rem;
+    line-height: 1.4;
+}
+
+.searchRow {
+    display: flex;
+    flex-wrap: wrap;
+    gap: var(--space-sm);
+    min-width: 0;
+}
+
+.searchRow > input {
+    flex: 1 1 12rem;
+    min-width: 0;
+}
+
+.listPane {
+    flex: 1 1 auto;
+    min-height: 0;
+    overflow: auto;
+    overscroll-behavior: contain;
+}
+
+.listPane > .hint,
+.listPane > .error {
+    margin: var(--space-sm) 0;
+}
+
+/*
+ * Card grid: equal-width tracks. Rectangular (wider than tall) cards keep a
+ * lower height than the old square aspect-ratio; ellipsis/line-clamp hold text.
+ */
+.grid {
+    display: grid;
+    gap: var(--space-sm);
+    margin: 0;
+    padding: 0;
+    list-style: none;
+    align-content: start;
+    grid-template-columns: repeat(auto-fill, minmax(10.5rem, 1fr));
+}
+
+.gridItem {
+    min-width: 0;
+    /* Weaken the old 1:1 square into a flatter rectangle. */
+    aspect-ratio: 5 / 3;
+}
+
+.card {
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+    box-sizing: border-box;
+    width: 100%;
+    height: 100%;
+    margin: 0;
+    padding: var(--space-sm);
+    overflow: hidden;
+    border: 1px solid var(--color-border);
+    border-radius: var(--radius-card);
+    background: var(--color-surface);
+    color: inherit;
+    text-align: start;
+    cursor: pointer;
+    transition:
+        background 120ms ease,
+        border-color 120ms ease;
+}
+
+.card:hover:not(:disabled) {
+    background: var(--color-hover);
+    border-color: var(--color-accent);
+}
+
+.card:focus-visible {
+    outline: 2px solid var(--color-focus);
+    outline-offset: 2px;
+}
+
+.card:disabled {
+    cursor: default;
+    opacity: 0.7;
+}
+
+.cardSelected {
+    /* Match app selected chips/tabs: light fill + thin accent border (no text-color frame). */
+    background: var(--color-selected);
+    border-color: var(--color-accent);
+}
+
+.cardSelected:hover:not(:disabled) {
+    background: var(--color-selected);
+    border-color: var(--color-accent);
+}
+
+.cardName {
+    flex-shrink: 0;
+    overflow: hidden;
+    font-size: 0.8125rem;
+    font-weight: 600;
+    line-height: 1.35;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+/* Secondary summary; clamp so overflow becomes "…" without growing the card. */
+.cardSummary {
+    flex: 1 1 auto;
+    min-height: 0;
+    display: -webkit-box;
+    overflow: hidden;
+    -webkit-box-orient: vertical;
+    -webkit-line-clamp: 2;
+    line-clamp: 2;
+    font-size: 0.75rem;
+    line-height: 1.45;
+    text-overflow: ellipsis;
+    overflow-wrap: anywhere;
+}
+
+/* Light placeholder while the visible-page description prefetch is in flight. */
+.cardSummarySkeleton {
+    flex: 1 1 auto;
+    min-height: 0.75rem;
+    max-height: 2.1rem;
+    margin-top: 2px;
+    border-radius: 4px;
+    background: var(--color-hover);
+    animation: marketplaceCardSkeletonPulse 1.2s ease infinite;
+}
+
+@keyframes marketplaceCardSkeletonPulse {
+    0%,
+    100% {
+        opacity: 0.4;
+    }
+
+    50% {
+        opacity: 0.9;
+    }
+}
+
+.cardMeta {
+    flex-shrink: 0;
+    overflow: hidden;
+    font-size: 0.75rem;
+    line-height: 1.45;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.pagination {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    justify-content: center;
+    gap: var(--space-sm);
+    margin-top: var(--space-md);
+    padding-bottom: var(--space-sm);
+}
+
+.pageList {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 4px;
+    margin: 0;
+    padding: 0;
+    list-style: none;
+}
+
+.pageButton {
+    min-width: 2rem;
+    margin: 0;
+    padding: 4px 8px;
+    border: 1px solid var(--color-border);
+    border-radius: var(--radius-control);
+    background: var(--color-surface);
+    color: var(--color-text);
+    font: inherit;
+    font-size: 0.8125rem;
+    line-height: 1.3;
+    cursor: pointer;
+}
+
+.pageButton:hover:not(:disabled) {
+    background: var(--color-hover);
+}
+
+.pageButton:focus-visible {
+    outline: 2px solid var(--color-focus);
+    outline-offset: 2px;
+}
+
+.pageButtonCurrent {
+    border-color: var(--color-text);
+    background: var(--color-selected);
+    font-weight: 600;
+}
+
+.pageButton:disabled {
+    cursor: default;
+    opacity: 0.7;
+}
+
+.footer {
+    display: grid;
+    flex-shrink: 0;
+    gap: var(--space-sm);
+}
+
+.review {
+    display: grid;
+    gap: var(--space-sm);
+    padding-top: var(--space-sm);
+    border-top: 1px solid var(--color-border);
+}
+
+.reviewHeading {
+    margin: 0;
+    color: var(--color-text);
+    font-size: 0.8125rem;
+    font-weight: 600;
+}
+
+.facts {
+    display: grid;
+    grid-template-columns: minmax(7rem, 0.3fr) minmax(0, 1fr);
+    gap: 4px var(--space-md);
+    margin: 0;
+    font-size: 0.8125rem;
+    line-height: 1.5;
+}
+
+.facts dt {
+    color: var(--color-summary);
+}
+
+.facts dd {
+    margin: 0;
+    color: var(--color-text);
+    overflow-wrap: anywhere;
+}
+
+.command {
+    margin: 0;
+    padding: var(--space-sm);
+    overflow-x: auto;
+    border: 1px solid var(--color-border);
+    border-radius: var(--radius-control);
+    background: var(--color-background);
+    color: var(--color-text);
+    font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+    font-size: 0.75rem;
+    line-height: 1.55;
+    white-space: pre-wrap;
+    overflow-wrap: anywhere;
+}
+
+.hint {
+    margin: 0;
+    color: var(--color-summary);
+    font-size: 0.75rem;
+    line-height: 1.6;
+    overflow-wrap: anywhere;
+}
+
+.error {
+    margin: 0;
+    color: var(--color-text);
+    border-inline-start: 2px solid var(--color-text);
+    padding-inline-start: var(--space-sm);
+    font-size: 0.8125rem;
+    font-weight: 600;
+    line-height: 1.6;
+    overflow-wrap: anywhere;
+}
+
+.skipped {
+    margin: 0;
+    padding-inline-start: var(--space-lg);
+    color: var(--color-summary);
+    font-size: 0.75rem;
+    line-height: 1.7;
+    overflow-wrap: anywhere;
+}
+
+.headerActions {
+    display: flex;
+    flex-wrap: wrap;
+    justify-content: flex-end;
+    gap: var(--space-sm);
+}
+
+.detailActions {
+    display: flex;
+    flex-wrap: wrap;
+    justify-content: flex-end;
+    gap: var(--space-sm);
+    margin-top: var(--space-md);
+}
+
+
+/* Marketplace detail overlay: wider than the shared delete dialog (28rem). */
+.detailPopup {
+    position: fixed;
+    top: calc(var(--titlebar-height) + (100dvh - var(--titlebar-height)) / 2);
+    left: 50%;
+    z-index: var(--layer-dialog);
+    width: min(40rem, calc(100vw - 32px));
+    max-width: calc(100vw - 32px);
+    max-height: calc(100dvh - var(--titlebar-height) - 24px);
+    overflow: auto;
+    transform: translate(-50%, -50%);
+    padding: var(--space-md);
+    border: 1px solid var(--color-border);
+    border-radius: var(--radius-card);
+    background: var(--color-surface);
+    box-shadow: 0 16px 56px rgb(0 0 0 / 24%);
+}
+
+.detailTitle {
+    margin: 0 0 var(--space-sm);
+    color: var(--color-text);
+    font-size: 0.9375rem;
+    font-weight: 600;
+}
+
+.detailBody {
+    margin: 0;
+    max-height: min(18rem, 42dvh);
+    overflow: auto;
+    overscroll-behavior: contain;
+    color: var(--color-text);
+    font-size: 0.8125rem;
+    line-height: 1.55;
+    white-space: pre-wrap;
+    overflow-wrap: anywhere;
+}
+
+.detailFacts {
+    margin-top: var(--space-md);
+}
+
+@media (max-width: 560px) {
+    .toolbar,
+    .facts {
+        grid-template-columns: minmax(0, 1fr);
+    }
+}

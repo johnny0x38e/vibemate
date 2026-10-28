@@ -161,7 +161,17 @@ export interface MarketplaceSkill {
     source: string;
     skillId: string;
     name: string;
-    installs: number;
+    /** Install count when skills.sh reports one; null instead of a fake zero. */
+    installs: number | null;
+    /** Short meta description from the skill page; null on list/search rows. */
+    description: string | null;
+    /** Longer Summary section from the skill page; null when absent. */
+    summary: string | null;
+    /**
+     * skills.sh catalog hint (`npx skills add …`) when the skill page shows one.
+     * Not vibemate's Git `previewMarketplaceInstall` command.
+     */
+    catalogInstallCommand: string | null;
 }
 /** Install one marketplace row at Git HEAD. */
 export interface MarketplaceInstallRequest {
@@ -189,6 +199,11 @@ const MAX_TOTAL = 100_000;
 /** Catalog search and leaderboard bounds, mirroring the Rust marketplace module. */
 const MAX_MARKETPLACE_ROWS = 100;
 const MAX_MARKETPLACE_SEARCH = 60;
+/**
+ * FE ceiling slightly above Rust's 20s HTTP timeout. If the IPC task panics or
+ * never settles, the marketplace page must still leave the loading state.
+ */
+const MARKETPLACE_CLIENT_TIMEOUT_MS = 25_000;
 /** Public GitHub `owner/repo` as skills.sh returns it for installable rows. */
 const GITHUB_OWNER_REPO =
     /^[A-Za-z0-9](?:[A-Za-z0-9]|-(?=[A-Za-z0-9])){0,38}\/[A-Za-z0-9._-]{1,100}$/;
@@ -209,6 +224,15 @@ function hasControlCharacter(value: string): boolean {
     }
     return false;
 }
+/** Summary may keep newlines/tabs; reject other controls. */
+function hasDisallowedSummaryControl(value: string): boolean {
+    for (const character of value) {
+        if (character === "\n" || character === "\t") continue;
+        const code = character.codePointAt(0) ?? 0;
+        if (code < 0x20 || code === 0x7f) return true;
+    }
+    return false;
+}
 function object(
     value: unknown,
     keys: readonly string[],
@@ -222,6 +246,9 @@ function string(value: unknown): string {
 }
 function optionalString(value: unknown): string | null {
     return value === null ? null : string(value);
+}
+function optionalInteger(value: unknown, minimum: number): number | null {
+    return value === null ? null : integer(value, minimum);
 }
 function fetchMethod(value: unknown): SkillFetchMethod | null {
     if (value === null) return null;
@@ -630,12 +657,24 @@ export async function installSkill(
 }
 
 function marketplaceSkill(value: unknown): MarketplaceSkill {
-    const data = object(value, ["id", "source", "skillId", "name", "installs"]);
+    const data = object(value, [
+        "id",
+        "source",
+        "skillId",
+        "name",
+        "installs",
+        "description",
+        "summary",
+        "catalogInstallCommand",
+    ]);
     const id = string(data["id"]);
     const source = string(data["source"]);
     const skillId = string(data["skillId"]);
     const name = string(data["name"]);
-    const installs = integer(data["installs"], 0);
+    const installs = optionalInteger(data["installs"], 0);
+    const description = optionalString(data["description"]);
+    const summary = optionalString(data["summary"]);
+    const catalogInstallCommand = optionalString(data["catalogInstallCommand"]);
     // Catalog rows are display data: require a GitHub source and safe labels.
     // Install still re-validates the skill selector through the Git path.
     if (
@@ -650,10 +689,35 @@ function marketplaceSkill(value: unknown): MarketplaceSkill {
         name.trim() === "" ||
         name.length > 128 ||
         hasControlCharacter(name) ||
-        id !== `${source}/${skillId}`
+        id !== `${source}/${skillId}` ||
+        (description !== null &&
+            (description.trim() === "" ||
+                description.length > 1024 ||
+                hasControlCharacter(description))) ||
+        (summary !== null &&
+            (summary.trim() === "" ||
+                summary.length > 8192 ||
+                hasDisallowedSummaryControl(summary))) ||
+        (catalogInstallCommand !== null &&
+            (catalogInstallCommand.trim() === "" ||
+                catalogInstallCommand.length > 512 ||
+                hasControlCharacter(catalogInstallCommand) ||
+                !catalogInstallCommand.startsWith(
+                    "npx skills add https://github.com/",
+                ) ||
+                !catalogInstallCommand.includes(" --skill ")))
     )
         invalid();
-    return { id, source, skillId, name, installs };
+    return {
+        id,
+        source,
+        skillId,
+        name,
+        installs,
+        description,
+        summary,
+        catalogInstallCommand,
+    };
 }
 
 function marketplaceRows(value: unknown, limit: number): MarketplaceSkill[] {
@@ -661,6 +725,30 @@ function marketplaceRows(value: unknown, limit: number): MarketplaceSkill[] {
     const rows = value.map((entry: unknown) => marketplaceSkill(entry));
     if (new Set(rows.map((row) => row.id)).size !== rows.length) invalid();
     return rows;
+}
+
+/** Reject if `work` does not settle, so catalog UI cannot spin forever. */
+function withMarketplaceTimeout<T>(work: Promise<T>): Promise<T> {
+    return new Promise<T>((resolve, reject) => {
+        const timer = window.setTimeout(() => {
+            reject(new SkillRequestError("marketplace_timed_out"));
+        }, MARKETPLACE_CLIENT_TIMEOUT_MS);
+        work.then(
+            (value) => {
+                window.clearTimeout(timer);
+                resolve(value);
+            },
+            (error: unknown) => {
+                window.clearTimeout(timer);
+                // Promise rejection reasons must be Error instances for lint.
+                reject(
+                    error instanceof Error
+                        ? error
+                        : new SkillRequestError("operation_failed"),
+                );
+            },
+        );
+    });
 }
 
 /**
@@ -685,7 +773,9 @@ export async function searchMarketplaceSkills(
     return {
         kind: "desktop",
         skills: marketplaceRows(
-            await call("search_marketplace_skills", { query: trimmed, limit }),
+            await withMarketplaceTimeout(
+                call("search_marketplace_skills", { query: trimmed, limit }),
+            ),
             MAX_MARKETPLACE_SEARCH,
         ),
     };
@@ -703,10 +793,49 @@ export async function listMarketplaceSkills(
     return {
         kind: "desktop",
         skills: marketplaceRows(
-            await call("list_marketplace_skills", { board }),
+            await withMarketplaceTimeout(
+                call("list_marketplace_skills", { board }),
+            ),
             MAX_MARKETPLACE_ROWS,
         ),
     };
+}
+
+/**
+ * Lazy-load one skill's public skills.sh detail (meta description, optional
+ * Summary, catalog install hint). Browser mode returns an honest preview
+ * marker; it never invents page text.
+ */
+export async function getMarketplaceSkillDetail(
+    source: string,
+    skillId: string,
+): Promise<
+    { kind: "preview" } | { kind: "desktop"; skill: MarketplaceSkill }
+> {
+    if (!isTauri()) return { kind: "preview" };
+    const trimmedSource = source.trim();
+    const trimmedSkillId = skillId.trim();
+    if (
+        !GITHUB_OWNER_REPO.test(trimmedSource) ||
+        !NAME_PATTERN.test(trimmedSkillId)
+    )
+        throw new SkillRequestError("invalid_request");
+    const skill = marketplaceSkill(
+        await withMarketplaceTimeout(
+            call("get_marketplace_skill_detail", {
+                source: trimmedSource,
+                skillId: trimmedSkillId,
+            }),
+        ),
+    );
+    // Detail must carry a real description; never accept a null placeholder.
+    if (skill.description === null) invalid();
+    if (
+        skill.source !== trimmedSource ||
+        skill.skillId !== trimmedSkillId
+    )
+        invalid();
+    return { kind: "desktop", skill };
 }
 
 /** Show the Git HEAD command for one marketplace row before anything runs. */

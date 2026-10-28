@@ -20,8 +20,8 @@ pub use deploy::{
 };
 pub use install::{install_skill, preview_skill_install};
 pub use marketplace::{
-    install_marketplace_skill, list_marketplace_skills, preview_marketplace_install,
-    search_marketplace_skills,
+    get_marketplace_skill_detail, install_marketplace_skill, list_marketplace_skills,
+    preview_marketplace_install, search_marketplace_skills,
 };
 pub use repository::{get_skill, list_skills};
 pub use service::{cleanup_deleted_skill_copies, delete_skill, import_folder, set_skill_source};

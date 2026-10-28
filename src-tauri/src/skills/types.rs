@@ -524,8 +524,14 @@ pub struct MarketplaceSkill {
     pub skill_id: String,
     /// Display name from the catalog.
     pub name: String,
-    /// Install count reported by skills.sh (informational only).
-    pub installs: u64,
+    /// Install count from skills.sh when known; `None` instead of a fake zero.
+    pub installs: Option<u64>,
+    /// Short meta description from the skill page; `None` on list/search rows.
+    pub description: Option<String>,
+    /// Longer Summary section text from the skill page; `None` when absent.
+    pub summary: Option<String>,
+    /// skills.sh catalog hint (`npx skills add …`), not vibemate's Git preview.
+    pub catalog_install_command: Option<String>,
 }
 
 /// Install one marketplace skill into the central library via Git HEAD.

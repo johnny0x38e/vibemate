@@ -31,7 +31,7 @@ import {
 } from "../../lib/desktop/skills";
 import { SkillDetail } from "./SkillDetail";
 import { SkillInstallDialog } from "./SkillInstallDialog";
-import { SkillMarketplaceDialog } from "./SkillMarketplaceDialog";
+import { SkillMarketplacePage } from "./SkillMarketplacePage";
 import { SkillRecoveryPanel } from "./SkillRecoveryPanel";
 import { skillSource } from "./skillSource";
 import buttons from "../../components/actionButtons.module.css";
@@ -50,7 +50,10 @@ type ListState =
           total: number;
           more: "idle" | "loading";
       };
-type PageState = { kind: "list" } | { kind: "detail"; record: SkillRecord };
+type PageState =
+    | { kind: "list" }
+    | { kind: "detail"; record: SkillRecord }
+    | { kind: "marketplace" };
 type DeleteReferences =
     | { kind: "idle" | "loading" | "preview" }
     | { kind: "ready"; items: SkillDeploymentRecord[] }
@@ -135,7 +138,6 @@ export function SkillLibrary({
     const [report, setReport] = useState<ImportReport | null>(null);
     const [formBlocked, setFormBlocked] = useState(false);
     const [installOpen, setInstallOpen] = useState(false);
-    const [marketplaceOpen, setMarketplaceOpen] = useState(false);
     const [deleteTarget, setDeleteTarget] = useState<SkillRecord | null>(null);
     const [deleteReferences, setDeleteReferences] = useState<{
         targetId: string | null;
@@ -152,14 +154,12 @@ export function SkillLibrary({
     const cancelDelete = useRef<HTMLButtonElement>(null);
     const deleteTrigger = useRef<HTMLElement | null>(null);
     const installTrigger = useRef<HTMLButtonElement>(null);
-    const marketplaceTrigger = useRef<HTMLButtonElement>(null);
     const busy = action.kind === "picking" || action.kind === "importing";
     // A running deletion shows its progress on the dialog button, so it blocks
     // the list without joining the import progress area.
     const blocked =
         busy ||
         installOpen ||
-        marketplaceOpen ||
         action.kind === "deleting" ||
         (action.kind === "error" && action.uncertain) ||
         (list.kind === "ready" && list.more === "loading");
@@ -509,7 +509,11 @@ export function SkillLibrary({
             ref={root}
             className={styles["view"]}
             hidden={hidden}
-            data-secondary-page={page.kind === "detail" ? true : undefined}
+            data-secondary-page={
+                page.kind === "detail" || page.kind === "marketplace"
+                    ? true
+                    : undefined
+            }
         >
             {page.kind === "detail" ? (
                 <SkillDetail
@@ -520,6 +524,12 @@ export function SkillLibrary({
                     onReload={() => {
                         void openDetail(page.record);
                     }}
+                    onNavigationBlockedChange={setFormBlocked}
+                />
+            ) : page.kind === "marketplace" ? (
+                <SkillMarketplacePage
+                    onCancel={returnToList}
+                    onInstalled={installed}
                     onNavigationBlockedChange={setFormBlocked}
                 />
             ) : (
@@ -534,7 +544,6 @@ export function SkillLibrary({
                                 {/* Marketplace browse, hand-entered install and
                                 local import are separate acquisition paths. */}
                                 <button
-                                    ref={marketplaceTrigger}
                                     className={[
                                         buttons["secondary"],
                                         buttons["withIcon"],
@@ -542,7 +551,9 @@ export function SkillLibrary({
                                     type="button"
                                     aria-disabled={blocked}
                                     onClick={() => {
-                                        setMarketplaceOpen(true);
+                                        if (blocked || mutationPending.current)
+                                            return;
+                                        setPage({ kind: "marketplace" });
                                     }}
                                 >
                                     <Icon name="skills" />
@@ -932,12 +943,6 @@ export function SkillLibrary({
                 onOpenChange={setInstallOpen}
                 onInstalled={installed}
                 returnFocus={installTrigger}
-            />
-            <SkillMarketplaceDialog
-                open={marketplaceOpen}
-                onOpenChange={setMarketplaceOpen}
-                onInstalled={installed}
-                returnFocus={marketplaceTrigger}
             />
         </section>
     );

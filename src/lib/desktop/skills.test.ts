@@ -3,6 +3,7 @@ import { beforeEach, expect, test, vi } from "vitest";
 import {
     cleanupDeletedSkillCopies,
     deleteSkill,
+    getMarketplaceSkillDetail,
     importSkillFolder,
     installMarketplaceSkill,
     installSkill,
@@ -598,6 +599,9 @@ const marketplaceRow: MarketplaceSkill = {
     skillId: "tdd",
     name: "tdd",
     installs: 42,
+    description: null,
+    summary: null,
+    catalogInstallCommand: null,
 };
 const MARKETPLACE_COMMAND =
     "git fetch --depth 1 https://github.com/mattpocock/skills HEAD && git checkout --detach FETCH_HEAD";
@@ -642,6 +646,88 @@ test("marketplace browse and search validate catalog rows", async () => {
         kind: "preview",
     });
     expect(vi.mocked(invoke)).not.toHaveBeenCalled();
+});
+
+test("marketplace catalog IPC that never settles times out", async () => {
+    vi.useFakeTimers();
+    try {
+        vi.mocked(invoke).mockImplementation(
+            () =>
+                new Promise(() => {
+                    /* never settles */
+                }),
+        );
+        const pending = listMarketplaceSkills("all_time");
+        const assertion = expect(pending).rejects.toMatchObject({
+            code: "marketplace_timed_out",
+        });
+        await vi.advanceTimersByTimeAsync(25_000);
+        await assertion;
+    } finally {
+        vi.useRealTimers();
+    }
+});
+
+test("marketplace skill detail requires a real description", async () => {
+    const detailed: MarketplaceSkill = {
+        ...marketplaceRow,
+        description: "Test-driven development skill from the catalog page.",
+        summary:
+            "Test-driven development with vertical slices and behavior-focused tests.",
+        catalogInstallCommand:
+            "npx skills add https://github.com/mattpocock/skills --skill tdd",
+        installs: 1_161_230,
+    };
+    vi.mocked(invoke).mockResolvedValue(detailed);
+    await expect(
+        getMarketplaceSkillDetail("mattpocock/skills", "tdd"),
+    ).resolves.toEqual({ kind: "desktop", skill: detailed });
+    expect(vi.mocked(invoke)).toHaveBeenCalledWith(
+        "get_marketplace_skill_detail",
+        { source: "mattpocock/skills", skillId: "tdd" },
+    );
+
+    vi.mocked(invoke).mockResolvedValue({
+        ...marketplaceRow,
+        description: null,
+    });
+    await expect(
+        getMarketplaceSkillDetail("mattpocock/skills", "tdd"),
+    ).rejects.toMatchObject({ code: "invalid_response" });
+
+    vi.mocked(invoke).mockResolvedValue({
+        ...marketplaceRow,
+        description: "ok",
+        catalogInstallCommand: "curl evil.example",
+    });
+    await expect(
+        getMarketplaceSkillDetail("mattpocock/skills", "tdd"),
+    ).rejects.toMatchObject({ code: "invalid_response" });
+
+    await expect(getMarketplaceSkillDetail("a", "tdd")).rejects.toMatchObject({
+        code: "invalid_request",
+    });
+
+    vi.mocked(isTauri).mockReturnValue(false);
+    vi.mocked(invoke).mockClear();
+    await expect(
+        getMarketplaceSkillDetail("mattpocock/skills", "tdd"),
+    ).resolves.toEqual({ kind: "preview" });
+    expect(vi.mocked(invoke)).not.toHaveBeenCalled();
+});
+
+test("marketplace skill detail accepts null installs and optional enrichments", async () => {
+    const detailed: MarketplaceSkill = {
+        ...marketplaceRow,
+        installs: null,
+        description: "Meta description only.",
+        summary: null,
+        catalogInstallCommand: null,
+    };
+    vi.mocked(invoke).mockResolvedValue(detailed);
+    await expect(
+        getMarketplaceSkillDetail("mattpocock/skills", "tdd"),
+    ).resolves.toEqual({ kind: "desktop", skill: detailed });
 });
 
 test("marketplace install reviews HEAD and rejects a non-git preview", async () => {

@@ -101,6 +101,15 @@ pub(crate) async fn list_marketplace_skills(
     crate::skills::list_marketplace_skills(board).await
 }
 
+/// Fetch one skill's public skills.sh meta description (lazy detail).
+#[tauri::command]
+pub(crate) async fn get_marketplace_skill_detail(
+    source: String,
+    skill_id: String,
+) -> Result<crate::skills::MarketplaceSkill, crate::skills::SkillError> {
+    crate::skills::get_marketplace_skill_detail(&source, &skill_id).await
+}
+
 /// Show the Git command for installing one marketplace skill at HEAD.
 #[tauri::command]
 pub(crate) fn preview_marketplace_install(
