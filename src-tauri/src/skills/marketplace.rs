@@ -748,7 +748,9 @@ fn meta_attributes(tag: &str) -> MetaAttrs {
             "property" if attrs.property.is_none() => {
                 attrs.property = Some(value.to_ascii_lowercase())
             }
-            "content" if attrs.content.is_none() => attrs.content = Some(decode_basic_entities(&value)),
+            "content" if attrs.content.is_none() => {
+                attrs.content = Some(decode_basic_entities(&value))
+            }
             _ => {}
         }
     }

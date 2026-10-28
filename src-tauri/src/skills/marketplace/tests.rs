@@ -185,7 +185,9 @@ fn parses_enriched_skill_page_detail_fixture() {
     assert_eq!(skill.installs, Some(1_161_230));
     assert_eq!(
         skill.description.as_deref(),
-        Some("Test-driven development. Use when the user wants to build features or fix bugs test-first.")
+        Some(
+            "Test-driven development. Use when the user wants to build features or fix bugs test-first."
+        )
     );
     let summary = skill.summary.expect("summary");
     assert!(summary.contains("vertical slices"));
@@ -236,7 +238,8 @@ fn detail_falls_back_to_og_title_and_omits_unknown_installs() {
 
 #[test]
 fn detail_keeps_skill_id_name_when_title_missing() {
-    let html = r#"<meta name="description" content="Only a description meta tag is present here."/>"#;
+    let html =
+        r#"<meta name="description" content="Only a description meta tag is present here."/>"#;
     let skill = parse_skill_page_detail("a/b", "my-skill", html).expect("detail");
     assert_eq!(skill.name, "my-skill");
     assert_eq!(skill.installs, None);
