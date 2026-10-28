@@ -146,9 +146,6 @@ export function McpGrokPreview({
                                     />
                                 </DetailPanel>
                                 <p className={styles["notice"]}>
-                                    {t("mcp.grokPreview.runtime")}
-                                </p>
-                                <p className={styles["notice"]}>
                                     {t("mcp.grokPreview.credentials")}
                                 </p>
                                 {proposal.disabledByUserList && (

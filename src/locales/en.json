@@ -437,7 +437,6 @@
             "manage": {
                 "open": "Manage Pi · {{name}}",
                 "title": "Pi registration · {{name}}",
-                "description": "Review and confirm changes to the user-level Pi MCP file. No action here starts or contacts a server.",
                 "review": "Reviewed entry change",
                 "action": "Action",
                 "removed": "Entry removed",
@@ -480,7 +479,6 @@
             },
             "history": {
                 "title": "Entry history",
-                "description": "Successful results for this definition and Pi directory. Restore preserves unrelated current content; old credential values may return.",
                 "empty": "No retained changes in this Pi directory.",
                 "restoreLabel": "Review entry result {{id}}"
             },
@@ -530,7 +528,6 @@
             "enabled": "Proposed native enabled flag",
             "on": "true — not proof of runtime enablement",
             "off": "false — definition would be retained",
-            "runtime": "After a future write, refresh /mcps in Grok. The personal disable list, project entries, organization policy, compatibility sources and Agent overrides can change what is active. This preview does not inspect them all or prove a connection.",
             "credentials": "Environment and header values are masked; OS credentials are not read. Future deployment would resolve them in Rust and write plaintext into a private Agent file, not vibemate credential references.",
             "disabledByUserList": "This name is in disabled_mcp_servers. Even a proposed enabled = true does not clear that personal disable state. This preview leaves the list unchanged.",
             "symlink": "The target is a symbolic link. This preview does not replace it or authorize writing through it.",
@@ -569,7 +566,6 @@
             "enabled": "Native enabled flag",
             "on": "Enabled on a future Pi load",
             "off": "Disabled; definition retained",
-            "runtime": "After writing, run /reload in Pi. Trusted project entries can override this registration; runtime flags or a replacement /mcp extension can bypass it. Registration is not proof that a server is effective or connected.",
             "credentials": "Environment and header values are masked. Future deployment would resolve them in Rust and write plaintext into a private Agent file; Pi cannot read vibemate OS-store references.",
             "relativeCwd": "The relative working directory is resolved against the Pi session directory, not the central library.",
             "home": "Pi expands a leading ~/ in the executable, arguments or working directory using its runtime home.",
@@ -688,7 +684,6 @@
             "manage": {
                 "open": "Manage Grok Build · {{name}}",
                 "title": "Grok Build registration · {{name}}",
-                "description": "Review and confirm changes to the user-level Grok Build MCP file. No action here starts or contacts a server.",
                 "review": "Reviewed entry change",
                 "action": "Action",
                 "removed": "Entry removed",
@@ -731,7 +726,6 @@
             },
             "history": {
                 "title": "Entry history",
-                "description": "Successful results for this definition and Grok Build directory. Restore preserves unrelated current content; old credential values may return.",
                 "empty": "No retained changes in this Grok directory.",
                 "restoreLabel": "Review entry result {{id}}"
             },
@@ -767,6 +761,37 @@
                 "dynamic_value_unsupported": "A public field contains ${…} interpolation. Grok would expand it at runtime; only literal fields are supported.",
                 "path_semantics_unverified": "Relative working directories and leading ~/ paths are not yet verified for Grok. Use an absolute working directory and literal executable/arguments, or omit the working directory."
             }
+        },
+        "count": "{{count}} MCP servers in total",
+        "detailTitle": "MCP server details",
+        "detailsLabel": "Open details for {{name}}",
+        "factsTitle": "Definition",
+        "factName": "Name",
+        "factServerName": "Server identifier",
+        "factTransport": "Transport",
+        "factStatus": "Status",
+        "factCommand": "Command",
+        "factUrl": "URL",
+        "factUpdated": "Updated",
+        "editAction": "Edit",
+        "actionsTitle": "Enable and edit",
+        "actionsHint": "Toggle enablement from the list. Use Edit below to change the definition.",
+        "inject": {
+            "title": "Agent registration",
+            "ariaLabel": "Agent registration targets",
+            "pi": "Pi",
+            "grok": "Grok Build",
+            "statusLabel": "Registration status",
+            "statusLoading": "Checking registration…",
+            "statusError": "Registration could not be checked.",
+            "registered": "Registered",
+            "unregistered": "Not registered",
+            "statusUnchecked": "Not checked yet",
+            "pathPending": "Resolving target path…",
+            "refresh": "Refresh registration status · {{agent}} · {{name}}",
+            "register": "Register with {{agent}} · {{name}}",
+            "history": "{{agent}} registration history · {{name}}",
+            "historyTitle": "{{agent}} registration history · {{name}}"
         }
     },
     "agents": {
@@ -1543,7 +1568,19 @@
             "confirm": "Install",
             "installing": "Installing from the marketplace…",
             "cancel": "Cancel",
-            "done": "Done"
+            "done": "Done",
+            "detailTitle": "Catalog skill",
+            "factSkillId": "Skill ID",
+            "factInstalls": "Installs",
+            "close": "Close",
+            "detailLoading": "Loading description…",
+            "installsCount": "{{count}} installs",
+            "prevPage": "Previous",
+            "nextPage": "Next",
+            "pageStatus": "Page {{page}} of {{pages}}",
+            "paginationLabel": "Marketplace pages",
+            "factCatalogInstall": "Catalog install",
+            "catalogInstallHint": "Command published on skills.sh. vibemate still installs via the Review → Git preview below."
         },
         "install": {
             "open": "Install from source",
@@ -1577,7 +1614,9 @@
             "resultSkipped_one": "{{count}} folder was skipped:",
             "resultSkipped_other": "{{count}} folders were skipped:",
             "cancel": "Cancel",
-            "done": "Done"
+            "done": "Done",
+            "resultImported": "Imported {{count}} skill(s).",
+            "resultSkipped": "Skipped {{count}}."
         },
         "delete": {
             "label": "Delete “{{name}}”",
@@ -1703,6 +1742,9 @@
                 "keep": "Keep the current library copy",
                 "replace": "Replace the library copy with the candidate"
             }
-        }
+        },
+        "count": "{{count}} skills in total",
+        "reportImported": "Imported {{count}} skill(s).",
+        "reportSkipped": "Skipped {{count}}."
     }
 }

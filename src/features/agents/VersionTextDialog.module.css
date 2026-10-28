@@ -1,15 +1,10 @@
 /* Complete-text / version-plan dialogs: file switcher, primary line diff and
-   optional full-text panes. Modal layers stay below the titlebar strip so macOS
-   traffic lights remain reachable. Theme tokens only — no extra surface layers. */
+   optional full-text panes. Popup shells stay below the titlebar strip so macOS
+   traffic lights remain reachable; the shared backdrop covers the full window.
+   Theme tokens only — no extra surface layers. */
 
 .backdrop {
-    position: fixed;
-    top: var(--titlebar-height);
-    right: 0;
-    bottom: 0;
-    left: 0;
-    z-index: var(--layer-dialog-backdrop);
-    background: rgb(0 0 0 / 35%);
+    composes: backdrop from "../../components/dialogOverlay.module.css";
 }
 
 .popup {

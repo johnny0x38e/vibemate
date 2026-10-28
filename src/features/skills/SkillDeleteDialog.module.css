@@ -1,15 +1,9 @@
-/* Delete-confirmation dialog: backdrop, centered popup and its action row.
-   The same layout as the MCP delete dialog, kept per feature until the two
-   features share a dialog component. Sizes use shared spacing tokens only. */
+/* Delete-confirmation dialog: centered popup and its action row.
+   Backdrop comes from the shared dialogOverlay module. Popup layout stays
+   per feature until a shared dialog shell exists. Spacing tokens only. */
 
 .backdrop {
-    position: fixed;
-    top: var(--titlebar-height);
-    right: 0;
-    bottom: 0;
-    left: 0;
-    z-index: var(--layer-dialog-backdrop);
-    background: rgb(0 0 0 / 35%);
+    composes: backdrop from "../../components/dialogOverlay.module.css";
 }
 
 .popup {

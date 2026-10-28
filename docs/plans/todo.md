@@ -450,3 +450,7 @@ BR0–BR5 已完成；现行边界见 [backend-modularity.md](backend-modularity
 - [ ] **BR9：MCP/Skill 来源安装设计。** 首个实际来源、固定 revision、安装计划/执行/更新/卸载、受管路径和恢复。路线 A 已确认：更新能力以「来源是否明确」为条件。
 - [ ] **BR10：API 转发设计。** 首条同协议转发、gateway 生命周期、路由、协议适配、流式/工具调用/取消/错误验收。
 - [ ] **BR11：Agent 安装设计。** 首个 Agent 的安装/升级/卸载契约、目标平台/架构与现有安装来源；安装完成后只检测，不自动启动或应用配置。
+
+## WIP note (uncommitted) — MCP inject → detail (frontend)
+
+维护者决定：MCP 列表去掉 per-Agent 注册摘要与 Pi/Grok 管理 IconButton；整行进入详情二级页，`McpPiManager` / `McpGrokManager` 仅在详情页（及删除引用入口）打开。列表保留编辑 / 启用禁用 / 删除（及 cleanup）。未改 `CHANGELOG.md`、`storage.rs`、`storage/tests.rs`；工作区保持未提交。

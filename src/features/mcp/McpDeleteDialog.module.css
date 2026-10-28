@@ -1,11 +1,5 @@
 .backdrop {
-    position: fixed;
-    top: var(--titlebar-height);
-    right: 0;
-    bottom: 0;
-    left: 0;
-    z-index: var(--layer-dialog-backdrop);
-    background: rgb(0 0 0 / 35%);
+    composes: backdrop from "../../components/dialogOverlay.module.css";
 }
 
 .popup {

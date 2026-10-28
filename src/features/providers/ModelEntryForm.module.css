@@ -1,14 +1,8 @@
-/* Model entry dialog. The backdrop and popup match the delete confirmation
-   so a second dialog uses the same stacking and surface. */
+/* Model entry dialog. Backdrop uses the shared full-window scrim; the popup
+   matches the delete confirmation stacking and surface. */
 
 .backdrop {
-    position: fixed;
-    top: var(--titlebar-height);
-    right: 0;
-    bottom: 0;
-    left: 0;
-    z-index: 2;
-    background: rgb(0 0 0 / 35%);
+    composes: backdrop from "../../components/dialogOverlay.module.css";
 }
 
 .popup {

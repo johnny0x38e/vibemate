@@ -5,6 +5,7 @@ import {
     render,
     screen,
     waitFor,
+    within,
 } from "@testing-library/react";
 import { StrictMode, createRef, type Ref } from "react";
 import type { ModuleNavigationHandle } from "../../components/moduleNavigation";
@@ -109,6 +110,15 @@ async function setup(
         </StrictMode>,
     );
 }
+/** Open McpDetail via the list Detail IconButton (not the whole row). */
+async function openDetail(name = "Tools"): Promise<void> {
+    fireEvent.click(
+        await screen.findByRole("button", {
+            name: `Open details for ${name}`,
+        }),
+    );
+    await screen.findByRole("heading", { name: name });
+}
 beforeEach(() => {
     vi.mocked(readGrokMcpState)
         .mockReset()
@@ -140,22 +150,33 @@ afterEach(() => {
     cleanup();
 });
 
-test("Grok management opens with the list revision and closes without central mutation", async () => {
+test("Grok inject row shows path and Register IconButton; no dialog until clicked", async () => {
     const homeRef = createRef<ModuleNavigationHandle>();
     await setup("en", homeRef);
-    const trigger = await screen.findByRole("button", {
-        name: "Manage Grok Build · Tools",
-    });
-    trigger.focus();
-    fireEvent.click(trigger);
+    await openDetail();
     expect(await screen.findByText(emptyGrokMcpState.targetPath)).toBeDefined();
     expect(readGrokMcpState).toHaveBeenCalledWith(row.id);
-    expect(homeRef.current?.openHome()).toBe(false);
-    fireEvent.click(screen.getByRole("button", { name: "Close" }));
-    await waitFor(() => {
-        expect(screen.queryByRole("dialog")).toBeNull();
-        expect(document.activeElement).toBe(trigger);
-    });
+    expect(
+        screen.queryByRole("button", { name: "Manage Grok Build · Tools" }),
+    ).toBeNull();
+    expect(screen.queryByRole("dialog")).toBeNull();
+    expect(
+        await screen.findByRole("button", {
+            name: "Refresh registration status · Grok Build · Tools",
+        }),
+    ).toBeDefined();
+    expect(
+        await screen.findByRole("button", {
+            name: "Register with Grok Build · Tools",
+        }),
+    ).toBeDefined();
+    expect(
+        screen.getByRole("button", {
+            name: "Grok Build registration history · Tools",
+        }),
+    ).toBeDefined();
+    // Clear rows do not open a manager dialog, so home can leave.
+    expect(homeRef.current?.openHome()).toBe(true);
     expect(save).not.toHaveBeenCalled();
     expect(deleteMcpDefinition).not.toHaveBeenCalled();
     expect(applyPiMcpChange).not.toHaveBeenCalled();
@@ -167,26 +188,26 @@ test("Grok stale revision reloads the list instead of editing or deploying", asy
         new GrokMcpError("definition_changed"),
     );
     await setup();
+    await openDetail();
     fireEvent.click(
         await screen.findByRole("button", {
-            name: "Manage Grok Build · Tools",
+            name: "Register with Grok Build · Tools",
         }),
     );
-    fireEvent.click(
-        await screen.findByRole("button", { name: "Review deployment" }),
-    );
-    await screen.findByRole("alert");
+    const dialog = await screen.findByRole("dialog");
+    await within(dialog).findByRole("alert");
     const before = list.mock.calls.length;
-    fireEvent.click(screen.getByRole("button", { name: "Reload definitions" }));
+    fireEvent.click(
+        within(dialog).getByRole("button", { name: "Reload definitions" }),
+    );
     await waitFor(() => {
-        expect(screen.queryByRole("dialog")).toBeNull();
         expect(list.mock.calls.length).toBeGreaterThan(before);
     });
     expect(save).not.toHaveBeenCalled();
     expect(applyGrokMcpChange).not.toHaveBeenCalled();
 });
 
-test("hiding Grok management invalidates its pending result and never reopens it", async () => {
+test("hiding MCP unmounts inject rows before a late Grok read can paint", async () => {
     let finish: (value: typeof emptyGrokMcpState) => void = () => {};
     vi.mocked(readGrokMcpState).mockReturnValue(
         new Promise((resolve) => {
@@ -202,24 +223,22 @@ test("hiding Grok management invalidates its pending result and never reopens it
         </StrictMode>
     );
     const rendered = render(view(false));
-    fireEvent.click(
-        await screen.findByRole("button", {
-            name: "Manage Grok Build · Tools",
-        }),
-    );
-    expect(screen.getByRole("dialog")).toBeDefined();
+    await openDetail();
+    expect(
+        screen.getByRole("region", { name: "Grok Build registration · Tools" }),
+    ).toBeDefined();
+    expect(screen.queryByRole("dialog")).toBeNull();
     rendered.rerender(view(true));
     await act(async () => {
         finish(emptyGrokMcpState);
         await Promise.resolve();
     });
-    rendered.rerender(view(false));
-    expect(screen.queryByRole("dialog")).toBeNull();
+    // Still hidden: late resolve must not paint path into another module.
     expect(screen.queryByText(emptyGrokMcpState.targetPath)).toBeNull();
     expect(save).not.toHaveBeenCalled();
 });
 
-test("hiding MCP closes its preview and ignores a late native result", async () => {
+test("hiding MCP ignores a late Pi history failure from an unmounted history dialog", async () => {
     let fail: (error: Error) => void = () => {};
     vi.mocked(readPiMcpHistory).mockReturnValue(
         new Promise((_, reject) => {
@@ -235,16 +254,19 @@ test("hiding MCP closes its preview and ignores a late native result", async () 
         </StrictMode>
     );
     const rendered = render(view(false));
+    await openDetail();
+    // Open history so the Manager mounts and starts a history read.
     fireEvent.click(
-        await screen.findByRole("button", { name: "Manage Pi · Tools" }),
+        await screen.findByRole("button", {
+            name: "Pi registration history · Tools",
+        }),
     );
-    expect(screen.getByRole("dialog")).toBeDefined();
+    await screen.findByRole("dialog");
     rendered.rerender(view(true));
     await act(async () => {
         fail(new PiMcpError("outcome_unknown"));
         await Promise.resolve();
     });
-    rendered.rerender(view(false));
     expect(screen.queryByRole("dialog")).toBeNull();
     expect(screen.queryByRole("alert")).toBeNull();
     expect(save).not.toHaveBeenCalled();
@@ -255,20 +277,23 @@ test("Pi preview reads a list revision and reloads without mutating the definiti
         new PiMcpError("definition_changed"),
     );
     await setup();
+    await openDetail();
     fireEvent.click(
-        await screen.findByRole("button", { name: "Manage Pi · Tools" }),
+        await screen.findByRole("button", {
+            name: "Register with Pi · Tools",
+        }),
     );
-    fireEvent.click(
-        await screen.findByRole("button", { name: "Review deployment" }),
-    );
-    await screen.findByRole("alert");
+    const dialog = await screen.findByRole("dialog");
+    await within(dialog).findByRole("alert");
     expect(previewPiMcpChange).toHaveBeenCalledWith({
         definitionId: row.id,
         expectedRevision: row.revision,
         action: "deploy",
         historyId: null,
     });
-    fireEvent.click(screen.getByRole("button", { name: "Reload definitions" }));
+    fireEvent.click(
+        within(dialog).getByRole("button", { name: "Reload definitions" }),
+    );
     await waitFor(() => {
         expect(list).toHaveBeenCalledTimes(2);
     });
@@ -276,8 +301,8 @@ test("Pi preview reads a list revision and reloads without mutating the definiti
     expect(clean).not.toHaveBeenCalled();
     expect(deleteMcpDefinition).not.toHaveBeenCalled();
     expect(
-        screen.getByText(/Not registered in this Pi directory/),
-    ).toBeDefined();
+        (await screen.findAllByText(/^Not registered$/)).length,
+    ).toBeGreaterThan(0);
 });
 
 test("deletion lists Pi references from other roots and cannot orphan them", async () => {
@@ -354,14 +379,17 @@ test("hiding a confirmed Pi write retains the home guard until its result settle
         </I18nextProvider>
     );
     const rendered = render(view(false));
+    await openDetail();
     fireEvent.click(
-        await screen.findByRole("button", { name: "Manage Pi · Tools" }),
+        await screen.findByRole("button", {
+            name: "Register with Pi · Tools",
+        }),
     );
+    const dialog = await screen.findByRole("dialog");
     fireEvent.click(
-        await screen.findByRole("button", { name: "Review deployment" }),
-    );
-    fireEvent.click(
-        await screen.findByRole("button", { name: "Confirm file change" }),
+        await within(dialog).findByRole("button", {
+            name: "Confirm file change",
+        }),
     );
     rendered.rerender(view(true));
     expect(homeRef.current?.openHome()).toBe(false);
@@ -379,10 +407,13 @@ test("hiding a confirmed Pi write retains the home guard until its result settle
 test("central enablement does not imply Agent registration", async () => {
     await setup("en");
     await screen.findByText("Tools");
+    // List no longer shows per-Agent registration; that lives on detail.
     expect(
-        screen.getByText(/Not registered in this Pi directory/),
-    ).toBeDefined();
-    expect(screen.queryByText("mcp.list.registeredAgents")).toBeNull();
+        screen.queryByRole("button", { name: "Manage Pi · Tools" }),
+    ).toBeNull();
+    expect(
+        screen.queryByRole("button", { name: "Manage Grok Build · Tools" }),
+    ).toBeNull();
     expect(save).not.toHaveBeenCalled();
     fireEvent.click(
         screen.getByRole("button", { name: "Disable “Tools” definition" }),
@@ -390,11 +421,223 @@ test("central enablement does not imply Agent registration", async () => {
     await screen.findByRole("button", {
         name: "Enable “Tools” definition",
     });
-    expect(
-        screen.getByText(/Not registered in this Pi directory/),
-    ).toBeDefined();
     expect(clean).not.toHaveBeenCalled();
     expect(get).not.toHaveBeenCalled();
+    await openDetail();
+    expect(
+        (await screen.findAllByText(/^Not registered$/)).length,
+    ).toBeGreaterThan(0);
+});
+
+test("detail IconButton opens detail; row body and edit/enable/delete do not", async () => {
+    await setup();
+    await screen.findByText("Tools");
+    expect(
+        screen.queryByRole("button", { name: "Manage Pi · Tools" }),
+    ).toBeNull();
+    // Whole-row click is gone: the name text is not a button.
+    expect(
+        screen.queryByRole("button", { name: "Open details for Tools" }),
+    ).not.toBeNull();
+    const beforeRow = get.mock.calls.length;
+    fireEvent.click(screen.getByText("Tools"));
+    expect(get.mock.calls.length).toBe(beforeRow);
+    expect(screen.queryByRole("heading", { name: "Tools" })).toBeNull();
+
+    fireEvent.click(
+        screen.getByRole("button", { name: "Open details for Tools" }),
+    );
+    expect(await screen.findByRole("heading", { name: "Tools" })).toBeDefined();
+    expect(get).toHaveBeenCalledWith(row.id);
+    fireEvent.click(
+        screen.getByRole("button", { name: "Back to MCP servers" }),
+    );
+    await screen.findByRole("button", { name: "Edit “Tools”" });
+    const before = get.mock.calls.length;
+    fireEvent.click(screen.getByRole("button", { name: "Edit “Tools”" }));
+    await screen.findByLabelText(/^Name$/);
+    expect(get.mock.calls.length).toBeGreaterThan(before);
+    expect(screen.queryByText("Agent registration")).toBeNull();
+});
+
+test("detail shows definition + clear inject rows; header Edit primary; no delete", async () => {
+    await setup();
+    await openDetail();
+    expect(screen.getByRole("heading", { name: "Tools" })).toBeDefined();
+    expect(screen.getByText(/Definition enabled · stdio/)).toBeDefined();
+    expect(screen.getByRole("region", { name: "Definition" })).toBeDefined();
+    expect(
+        screen.queryByRole("region", { name: "Enable and edit" }),
+    ).toBeNull();
+    expect(screen.queryByText(/Toggle enablement from the list/)).toBeNull();
+    expect(
+        screen.getByRole("region", { name: "Agent registration" }),
+    ).toBeDefined();
+    expect(screen.queryByRole("tab", { name: "Pi" })).toBeNull();
+    expect(screen.queryByRole("tab", { name: "Grok Build" })).toBeNull();
+    expect(
+        screen.queryByRole("button", { name: "Manage Pi · Tools" }),
+    ).toBeNull();
+    expect(
+        screen.queryByRole("button", { name: "Manage Grok Build · Tools" }),
+    ).toBeNull();
+    const pi = await screen.findByRole("region", {
+        name: "Pi registration · Tools",
+    });
+    const grok = screen.getByRole("region", {
+        name: "Grok Build registration · Tools",
+    });
+    expect(
+        await within(pi).findByText(emptyPiMcpState.targetPath),
+    ).toBeDefined();
+    expect(
+        await within(grok).findByText(emptyGrokMcpState.targetPath),
+    ).toBeDefined();
+    expect((await screen.findAllByText(/^Not registered$/)).length).toBe(2);
+    // Unregistered rows expose IconButtons; no text primary deploy on the row.
+    expect(
+        within(pi).getByRole("button", {
+            name: "Refresh registration status · Pi · Tools",
+        }),
+    ).toBeDefined();
+    expect(
+        within(pi).getByRole("button", { name: "Register with Pi · Tools" }),
+    ).toBeDefined();
+    expect(
+        within(pi).getByRole("button", {
+            name: "Pi registration history · Tools",
+        }),
+    ).toBeDefined();
+    expect(
+        within(grok).getByRole("button", {
+            name: "Refresh registration status · Grok Build · Tools",
+        }),
+    ).toBeDefined();
+    expect(
+        within(grok).getByRole("button", {
+            name: "Register with Grok Build · Tools",
+        }),
+    ).toBeDefined();
+    expect(
+        within(grok).getByRole("button", {
+            name: "Grok Build registration history · Tools",
+        }),
+    ).toBeDefined();
+    expect(
+        within(pi).queryByRole("button", { name: "Review deployment" }),
+    ).toBeNull();
+    expect(screen.queryByRole("dialog")).toBeNull();
+    const edit = screen.getByRole("button", { name: "Edit" });
+    expect(edit.className).toMatch(/primary/);
+    const definition = screen.getByRole("region", { name: "Definition" });
+    expect(definition.textContent).not.toMatch(/Definition enabled/);
+    expect(screen.queryByRole("button", { name: /Delete “Tools”/ })).toBeNull();
+    // Agent marks from the shared Agent list assets.
+    expect(pi.querySelector('[data-agent="pi"]')).not.toBeNull();
+    expect(grok.querySelector('[data-agent="grokBuild"]')).not.toBeNull();
+    fireEvent.click(edit);
+    await screen.findByLabelText(/^Name$/);
+});
+
+test("row Refresh IconButton re-reads Agent registration status", async () => {
+    await setup();
+    await openDetail();
+    const pi = await screen.findByRole("region", {
+        name: "Pi registration · Tools",
+    });
+    await within(pi).findByText(emptyPiMcpState.targetPath);
+    const before = vi.mocked(readPiMcpState).mock.calls.length;
+    fireEvent.click(
+        within(pi).getByRole("button", {
+            name: "Refresh registration status · Pi · Tools",
+        }),
+    );
+    await waitFor(() => {
+        expect(vi.mocked(readPiMcpState).mock.calls.length).toBeGreaterThan(
+            before,
+        );
+    });
+    expect(await within(pi).findByText(/^Not registered$/)).toBeDefined();
+});
+
+test("Register name conflict shows warning dialog only; no empty registration form", async () => {
+    vi.mocked(previewPiMcpChange).mockRejectedValue(
+        new PiMcpError("name_conflict"),
+    );
+    await setup();
+    await openDetail();
+    fireEvent.click(
+        await screen.findByRole("button", {
+            name: "Register with Pi · Tools",
+        }),
+    );
+    const dialog = await screen.findByRole("dialog", {
+        name: "Pi registration · Tools",
+    });
+    const alert = await within(dialog).findByRole("alert");
+    expect(alert.textContent).toMatch(/owns this name|hyphen\/underscore/i);
+    // Conflict stays a warning popup: no review confirm, no registration facts.
+    expect(
+        within(dialog).queryByRole("button", { name: "Confirm file change" }),
+    ).toBeNull();
+    expect(
+        within(dialog).queryByRole("region", { name: /registration/i }),
+    ).toBeNull();
+    expect(
+        within(dialog).queryByRole("button", {
+            name: "Refresh registration",
+        }),
+    ).toBeNull();
+    fireEvent.click(within(dialog).getByRole("button", { name: "Close" }));
+    await waitFor(() => {
+        expect(screen.queryByRole("dialog")).toBeNull();
+    });
+    expect(applyPiMcpChange).not.toHaveBeenCalled();
+});
+
+test("Register IconButton opens review dialog; History opens history dialog; cancel closes", async () => {
+    await setup();
+    await openDetail();
+    fireEvent.click(
+        await screen.findByRole("button", {
+            name: "Register with Pi · Tools",
+        }),
+    );
+    const registerDialog = await screen.findByRole("dialog", {
+        name: "Pi registration · Tools",
+    });
+    expect(
+        await within(registerDialog).findByRole("button", {
+            name: "Confirm file change",
+        }),
+    ).toBeDefined();
+    fireEvent.click(
+        within(registerDialog).getByRole("button", { name: "Close" }),
+    );
+    await waitFor(() => {
+        expect(screen.queryByRole("dialog")).toBeNull();
+    });
+    fireEvent.click(
+        screen.getByRole("button", {
+            name: "Pi registration history · Tools",
+        }),
+    );
+    const historyDialog = await screen.findByRole("dialog", {
+        name: "Pi registration history · Tools",
+    });
+    expect(
+        within(historyDialog).queryByRole("button", {
+            name: "Review deployment",
+        }),
+    ).toBeNull();
+    expect(within(historyDialog).getByText("Entry history")).toBeDefined();
+    fireEvent.click(
+        within(historyDialog).getByRole("button", { name: "Close" }),
+    );
+    await waitFor(() => {
+        expect(screen.queryByRole("dialog")).toBeNull();
+    });
+    expect(applyPiMcpChange).not.toHaveBeenCalled();
 });
 
 test("the stored definition total is stated above the list and omitted when empty", async () => {

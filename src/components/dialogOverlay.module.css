@@ -1,0 +1,16 @@
+/* Shared dialog scrim for Base UI Dialog.Backdrop.
+ *
+ * Covers the entire app window, including the overlay titlebar strip, so light
+ * does not leak around macOS traffic lights. Dialog.Popup / content shells keep
+ * their own titlebar-offset positioning in feature stylesheets so window
+ * controls stay clear of the modal panel.
+ */
+.backdrop {
+    position: fixed;
+    top: 0;
+    right: 0;
+    bottom: 0;
+    left: 0;
+    z-index: var(--layer-dialog-backdrop);
+    background: rgb(0 0 0 / 35%);
+}

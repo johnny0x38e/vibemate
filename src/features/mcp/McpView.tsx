@@ -29,11 +29,10 @@ import {
     type SaveMcpInput,
 } from "../../lib/desktop/mcp";
 import { McpForm } from "./McpForm";
+import { McpDetail } from "./McpDetail";
 import { McpPiManager } from "./McpPiManager";
 import { McpGrokManager } from "./McpGrokManager";
 import { McpDeleteReferences } from "./McpDeleteReferences";
-import { usePiMcpRegistrations } from "./usePiMcpRegistrations";
-import { useGrokMcpRegistrations } from "./useGrokMcpRegistrations";
 import buttons from "../../components/actionButtons.module.css";
 import chip from "../../components/infoChip.module.css";
 import surfaceList from "../../components/surfaceList.module.css";
@@ -53,8 +52,14 @@ type ListState =
       };
 type PageState =
     | { kind: "list" }
-    | { kind: "opening"; id: string }
-    | { kind: "form"; record: McpRecord | null };
+    | {
+          kind: "opening";
+          id: string;
+          dest: "detail" | "form";
+          fromDetail: boolean;
+      }
+    | { kind: "detail"; record: McpRecord }
+    | { kind: "form"; record: McpRecord | null; fromDetail: boolean };
 type ActionState =
     | { kind: "idle" | "running" }
     | { kind: "error"; code: McpErrorCode; uncertain: boolean };
@@ -113,14 +118,13 @@ export function McpView({
     const [formBlocked, setFormBlocked] = useState(false);
     const [deploymentEpoch, setDeploymentEpoch] = useState(0);
     const [deploymentBusy, setDeploymentBusy] = useState(false);
-    const registrations = usePiMcpRegistrations(hidden, deploymentEpoch);
-    const grokRegistrations = useGrokMcpRegistrations(hidden, deploymentEpoch);
     const [deleteTarget, setDeleteTarget] = useState<McpRecord | null>(null);
     const [deleteAllowed, setDeleteAllowed] = useState(false);
     const [previewTarget, setPreviewTarget] = useState<{
         agent: "pi" | "grok";
         record: McpRecord;
         trigger: HTMLElement | null;
+        intent: "manage" | "register" | "history";
     } | null>(null);
     const cancelDelete = useRef<HTMLButtonElement>(null);
     const deleteTrigger = useRef<HTMLElement | null>(null);
@@ -193,14 +197,22 @@ export function McpView({
             clearTimeout(timer);
         };
     }, [reload]);
-    async function open(id: string): Promise<void> {
+    async function openRecord(
+        id: string,
+        dest: "detail" | "form",
+        fromDetail = false,
+    ): Promise<void> {
         if (blocked || mutationPending.current) return;
         const generation = ++pageGeneration.current;
-        setPage({ kind: "opening", id });
+        setPage({ kind: "opening", id, dest, fromDetail });
         try {
             const record = await getMcpDefinition(id);
             if (active.current && generation === pageGeneration.current) {
-                setPage({ kind: "form", record });
+                setPage(
+                    dest === "detail"
+                        ? { kind: "detail", record }
+                        : { kind: "form", record, fromDetail },
+                );
                 focusRequested.current = true;
             }
         } catch (error: unknown) {
@@ -359,7 +371,8 @@ export function McpView({
         }
     }
     function saved(record: McpRecord): void {
-        setPage({ kind: "list" });
+        const fromDetail = page.kind === "form" && page.fromDetail;
+        setPage(fromDetail ? { kind: "detail", record } : { kind: "list" });
         focusRequested.current = true;
         notify({
             tone: "success",
@@ -374,9 +387,13 @@ export function McpView({
             ref={root}
             className={styles["view"]}
             hidden={hidden}
-            data-mcp-editor={page.kind === "form" ? true : undefined}
+            data-mcp-editor={
+                page.kind === "form" || page.kind === "detail"
+                    ? true
+                    : undefined
+            }
         >
-            {page.kind !== "form" && (
+            {page.kind !== "form" && page.kind !== "detail" && (
                 <PageModuleHeader
                     icon="mcp"
                     title={t("mcp.title")}
@@ -398,7 +415,11 @@ export function McpView({
                                 aria-disabled={blocked || list.kind !== "ready"}
                                 onClick={() => {
                                     if (!blocked && list.kind === "ready") {
-                                        setPage({ kind: "form", record: null });
+                                        setPage({
+                                            kind: "form",
+                                            record: null,
+                                            fromDetail: false,
+                                        });
                                         focusRequested.current = true;
                                     }
                                 }}
@@ -417,13 +438,54 @@ export function McpView({
                     hidden={hidden}
                     onSaved={saved}
                     onNavigationBlockedChange={setFormBlocked}
-                    onCancel={returnToList}
+                    onCancel={() => {
+                        if (page.fromDetail && page.record !== null) {
+                            setPage({ kind: "detail", record: page.record });
+                            focusRequested.current = true;
+                            return;
+                        }
+                        returnToList();
+                    }}
                     onReload={() => {
                         const id = page.record?.id;
                         if (id === undefined) returnToList();
-                        else void open(id);
+                        else void openRecord(id, "form", page.fromDetail);
                     }}
                 />
+            ) : page.kind === "detail" ? (
+                <div className={styles["editor"]}>
+                    <McpDetail
+                        key={`${page.record.id}-${String(page.record.revision)}-${String(deploymentEpoch)}`}
+                        record={page.record}
+                        hidden={hidden}
+                        backBlocked={blocked || formBlocked}
+                        onBack={returnToList}
+                        onEdit={() => {
+                            setPage({
+                                kind: "form",
+                                record: page.record,
+                                fromDetail: true,
+                            });
+                            focusRequested.current = true;
+                        }}
+                        onRegister={(agent, trigger) => {
+                            setPreviewTarget({
+                                agent,
+                                record: page.record,
+                                trigger,
+                                intent: "register",
+                            });
+                        }}
+                        onHistory={(agent, trigger) => {
+                            setPreviewTarget({
+                                agent,
+                                record: page.record,
+                                trigger,
+                                intent: "history",
+                            });
+                        }}
+                    />
+                </div>
             ) : page.kind === "opening" ? (
                 <p role="status">{t("mcp.loading")}</p>
             ) : (
@@ -518,59 +580,33 @@ export function McpView({
                                             ].join(" ")}
                                             key={record.id}
                                         >
-                                            <div className={styles["details"]}>
-                                                <h2 className={styles["name"]}>
-                                                    {record.displayName}
-                                                </h2>
-                                                <p
+                                            {/* Row body is not a hit target; only the
+                                            Detail IconButton opens McpDetail. */}
+                                            <div className={styles["rowMain"]}>
+                                                <div
                                                     className={
-                                                        styles["subline"]
+                                                        styles["rowText"]
                                                     }
                                                 >
-                                                    {[
-                                                        registrations.kind ===
-                                                        "ready"
-                                                            ? t(
-                                                                  registrations.value.deployments.some(
-                                                                      (item) =>
-                                                                          item.definitionId ===
-                                                                          record.id,
-                                                                  )
-                                                                      ? "mcp.pi.manage.registeredSummary"
-                                                                      : "mcp.pi.states.unregistered",
-                                                              )
-                                                            : t(
-                                                                  "mcp.pi.manage.summaryUnknown",
-                                                              ),
-                                                        grokRegistrations.kind ===
-                                                        "ready"
-                                                            ? t(
-                                                                  grokRegistrations.value.deployments.some(
-                                                                      (item) =>
-                                                                          item.definitionId ===
-                                                                          record.id,
-                                                                  )
-                                                                      ? "mcp.grok.manage.registeredSummary"
-                                                                      : "mcp.grok.states.unregistered",
-                                                              )
-                                                            : t(
-                                                                  "mcp.grok.manage.summaryUnknown",
-                                                              ),
-                                                    ].join(" · ")}
-                                                </p>
-                                                {record.cleanupPending && (
-                                                    <p
+                                                    <span
                                                         className={
-                                                            styles["hint"]
+                                                            styles["name"]
                                                         }
                                                     >
-                                                        {t(
-                                                            "mcp.cleanupPending",
-                                                        )}
-                                                    </p>
-                                                )}
-                                            </div>
-                                            <div className={styles["trailing"]}>
+                                                        {record.displayName}
+                                                    </span>
+                                                    {record.cleanupPending && (
+                                                        <span
+                                                            className={
+                                                                styles["hint"]
+                                                            }
+                                                        >
+                                                            {t(
+                                                                "mcp.cleanupPending",
+                                                            )}
+                                                        </span>
+                                                    )}
+                                                </div>
                                                 <span className={chip["chip"]}>
                                                     {t(
                                                         record.connection
@@ -579,63 +615,13 @@ export function McpView({
                                                             : "mcp.http",
                                                     )}
                                                 </span>
+                                            </div>
+                                            <div className={styles["trailing"]}>
                                                 <div
                                                     className={
                                                         listActions["group"]
                                                     }
                                                 >
-                                                    <IconButton
-                                                        icon="info"
-                                                        blocked={blocked}
-                                                        label={t(
-                                                            "mcp.pi.manage.open",
-                                                            {
-                                                                name: record.displayName,
-                                                            },
-                                                        )}
-                                                        onClick={() => {
-                                                            if (
-                                                                blocked ||
-                                                                mutationPending.current
-                                                            )
-                                                                return;
-                                                            setPreviewTarget({
-                                                                agent: "pi",
-                                                                record,
-                                                                trigger:
-                                                                    document.activeElement instanceof
-                                                                    HTMLElement
-                                                                        ? document.activeElement
-                                                                        : null,
-                                                            });
-                                                        }}
-                                                    />
-                                                    <IconButton
-                                                        icon="mcp"
-                                                        blocked={blocked}
-                                                        label={t(
-                                                            "mcp.grok.manage.open",
-                                                            {
-                                                                name: record.displayName,
-                                                            },
-                                                        )}
-                                                        onClick={() => {
-                                                            if (
-                                                                blocked ||
-                                                                mutationPending.current
-                                                            )
-                                                                return;
-                                                            setPreviewTarget({
-                                                                agent: "grok",
-                                                                record,
-                                                                trigger:
-                                                                    document.activeElement instanceof
-                                                                    HTMLElement
-                                                                        ? document.activeElement
-                                                                        : null,
-                                                            });
-                                                        }}
-                                                    />
                                                     <IconButton
                                                         icon="edit"
                                                         blocked={blocked}
@@ -646,8 +632,25 @@ export function McpView({
                                                             },
                                                         )}
                                                         onClick={() => {
-                                                            void open(
+                                                            void openRecord(
                                                                 record.id,
+                                                                "form",
+                                                            );
+                                                        }}
+                                                    />
+                                                    <IconButton
+                                                        icon="info"
+                                                        blocked={blocked}
+                                                        label={t(
+                                                            "mcp.detailsLabel",
+                                                            {
+                                                                name: record.displayName,
+                                                            },
+                                                        )}
+                                                        onClick={() => {
+                                                            void openRecord(
+                                                                record.id,
+                                                                "detail",
                                                             );
                                                         }}
                                                     />
@@ -744,15 +747,20 @@ export function McpView({
             )}
             {!hidden && previewTarget?.agent === "grok" && (
                 <McpGrokManager
-                    key={`${previewTarget.record.id}-${String(previewTarget.record.revision)}`}
+                    key={`${previewTarget.record.id}-${String(previewTarget.record.revision)}-${previewTarget.intent}`}
                     record={previewTarget.record}
+                    intent={previewTarget.intent}
                     returnFocus={previewTarget.trigger}
                     onClose={() => {
                         setPreviewTarget(null);
                     }}
                     onReload={() => {
+                        const detailId =
+                            page.kind === "detail" ? page.record.id : null;
                         setPreviewTarget(null);
                         void reload();
+                        if (detailId !== null)
+                            void openRecord(detailId, "detail");
                     }}
                     onBusyChange={(busy) => {
                         mutationPending.current = busy;
@@ -766,15 +774,20 @@ export function McpView({
             )}
             {!hidden && previewTarget?.agent === "pi" && (
                 <McpPiManager
-                    key={`${previewTarget.record.id}-${String(previewTarget.record.revision)}`}
+                    key={`${previewTarget.record.id}-${String(previewTarget.record.revision)}-${previewTarget.intent}`}
                     record={previewTarget.record}
+                    intent={previewTarget.intent}
                     returnFocus={previewTarget.trigger}
                     onClose={() => {
                         setPreviewTarget(null);
                     }}
                     onReload={() => {
+                        const detailId =
+                            page.kind === "detail" ? page.record.id : null;
                         setPreviewTarget(null);
                         void reload();
+                        if (detailId !== null)
+                            void openRecord(detailId, "detail");
                     }}
                     onBusyChange={(busy) => {
                         mutationPending.current = busy;
@@ -826,6 +839,7 @@ export function McpView({
                                         agent,
                                         record: deleteTarget,
                                         trigger: deleteTrigger.current,
+                                        intent: "manage",
                                     });
                                     setDeleteTarget(null);
                                 }}

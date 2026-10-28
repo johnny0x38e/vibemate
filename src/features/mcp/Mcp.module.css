@@ -238,3 +238,121 @@
         grid-column: 1 / -1;
     }
 }
+
+/* Non-interactive row body: name + transport; Detail is a trailing IconButton. */
+.rowMain {
+    flex: 1;
+    min-width: 0;
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    justify-content: space-between;
+    gap: var(--space-md);
+}
+
+.rowText {
+    display: grid;
+    flex: 1;
+    min-width: 0;
+    gap: 4px;
+}
+
+/* Detail cards share the Agent/Skill 10px gap. */
+.detailGroup {
+    display: grid;
+    gap: 10px;
+    margin-top: 0;
+}
+
+/* Inject card: clear Agent list rows; Register/History open dialogs. */
+.injectBlock {
+    display: grid;
+    gap: var(--space-sm);
+    padding: var(--space-sm) 0;
+    border-bottom: 1px solid var(--color-border);
+}
+
+.injectBlock:last-child {
+    border-bottom: 0;
+}
+
+.injectRow {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: var(--space-sm);
+    min-width: 0;
+}
+
+.injectChrome {
+    display: flex;
+    align-items: center;
+    flex: 1;
+    gap: var(--space-sm);
+    min-width: 0;
+}
+
+/*
+ * Pi's official mark fills more of its canvas than Grok Build, so at the shared
+ * row box it reads larger. Inset only the Pi image here; Agent list keeps its own
+ * optical tweak in AgentIcon.module.css.
+ */
+.injectChrome :global(img[data-agent="pi"]) {
+    width: 72%;
+    height: 72%;
+}
+
+.injectChromeText {
+    display: grid;
+    flex: 1;
+    min-width: 0;
+    gap: 2px;
+}
+
+.injectAgent {
+    /* Primary name: color from textHierarchy.value (--color-text). */
+    flex-shrink: 0;
+    margin: 0;
+    font-size: 0.8125rem;
+    font-weight: 500;
+    line-height: 1.35;
+}
+
+.injectStatus {
+    /* Right-rail status, aligned with IconButtons via injectRow centering. */
+    flex: 0 0 auto;
+    margin: 0;
+    font-size: 0.8125rem;
+    line-height: 1.35;
+    text-align: end;
+    white-space: nowrap;
+}
+
+.injectStatus[data-state="registered"] {
+    color: var(--color-success-fg);
+}
+
+.injectStatus[data-state="unregistered"] {
+    color: var(--color-danger-fg);
+}
+
+.injectStatus[data-state="loading"],
+.injectStatus[data-state="unchecked"] {
+    color: var(--color-summary);
+}
+
+.injectPath {
+    /* Secondary path: color from textHierarchy.hint (--color-summary). */
+    margin: 0;
+    font-size: 0.6875rem;
+    line-height: 1.4;
+    font-variant-numeric: tabular-nums;
+    overflow-wrap: anywhere;
+}
+
+.injectRowError {
+    margin: 0;
+    color: var(--color-danger-fg);
+    font-size: 0.8125rem;
+    line-height: 1.45;
+}

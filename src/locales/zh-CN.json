@@ -437,7 +437,6 @@
             "manage": {
                 "open": "管理 Pi · {{name}}",
                 "title": "Pi 注册 · {{name}}",
-                "description": "审阅并确认 Pi 用户级 MCP 文件的变更。此处任何操作都不会启动或联系服务器。",
                 "review": "待确认的条目变更",
                 "action": "操作",
                 "removed": "移除条目",
@@ -480,7 +479,6 @@
             },
             "history": {
                 "title": "条目历史",
-                "description": "此定义在当前 Pi 目录的成功操作结果。恢复时保留其它当前内容，但可能带回旧的凭据值。",
                 "empty": "当前 Pi 目录没有保留的变更。",
                 "restoreLabel": "审阅条目结果 {{id}}"
             },
@@ -530,7 +528,6 @@
             "enabled": "拟写入的原生启用标志",
             "on": "true，不代表运行时已启用",
             "off": "false，保留定义",
-            "runtime": "后续写入后需在 Grok 的 /mcps 中刷新。个人关闭列表、项目条目、组织策略、兼容来源及 Agent 覆盖均可能改变生效内容；本预览不检查全部来源，也不证明已连接。",
             "credentials": "环境变量与请求头的值已遮蔽，本次不读取系统凭据。后续部署需由 Rust 解析凭据并将明文写入 Agent 私有文件，而不是写入 vibemate 凭据引用。",
             "disabledByUserList": "此名称位于 disabled_mcp_servers 中。即使拟写入 enabled = true，也不会清除个人关闭状态。本预览不修改该列表。",
             "symlink": "目标是符号链接。本次预览不会替换它，也不授予沿链接写入的权限。",
@@ -569,7 +566,6 @@
             "enabled": "原生启用标志",
             "on": "Pi 后续加载时启用",
             "off": "停用并保留定义",
-            "runtime": "写入后请在 Pi 中执行 /reload。受信任项目条目可能覆盖此注册；运行参数或接管 /mcp 的扩展也可能绕过它。已注册不代表运行时已生效或已连接。",
             "credentials": "环境变量与请求头的值已遮蔽。后续部署将由 Rust 解析凭据，并以明文写入 Agent 私有文件；Pi 无法直接读取 vibemate 的系统凭据引用。",
             "relativeCwd": "相对工作目录以 Pi 会话目录为基准，而不是中央库目录。",
             "home": "Pi 会按运行时的主目录展开可执行文件、参数或工作目录开头的 ~/。",
@@ -688,7 +684,6 @@
             "manage": {
                 "open": "管理 Grok Build · {{name}}",
                 "title": "Grok Build 注册 · {{name}}",
-                "description": "审阅并确认 Grok Build 用户级 MCP 文件的变更。此处任何操作都不会启动或联系服务器。",
                 "review": "待确认的条目变更",
                 "action": "操作",
                 "removed": "移除条目",
@@ -731,7 +726,6 @@
             },
             "history": {
                 "title": "条目历史",
-                "description": "此定义在当前 Grok Build 目录的成功操作结果。恢复时保留其它当前内容，但可能带回旧的凭据值。",
                 "empty": "此 Grok 目录尚无保留的更改。",
                 "restoreLabel": "审阅条目结果 {{id}}"
             },
@@ -767,6 +761,37 @@
                 "dynamic_value_unsupported": "公开字段含有 ${…} 插值。Grok 会在运行时展开它；目前只支持字面量字段。",
                 "path_semantics_unverified": "相对工作目录与前导 ~/ 路径尚未对 Grok 核实。请使用绝对工作目录与字面量可执行文件/参数，或省略工作目录。"
             }
+        },
+        "count": "共 {{count}} 个 MCP 服务器",
+        "detailTitle": "MCP 服务器详情",
+        "detailsLabel": "查看「{{name}}」详情",
+        "factsTitle": "定义",
+        "factName": "名称",
+        "factServerName": "服务器标识",
+        "factTransport": "传输方式",
+        "factStatus": "状态",
+        "factCommand": "命令",
+        "factUrl": "URL",
+        "factUpdated": "更新时间",
+        "editAction": "编辑",
+        "actionsTitle": "启停与编辑",
+        "actionsHint": "启用／禁用请在列表操作。下方「编辑」可修改定义。",
+        "inject": {
+            "title": "Agent 注册",
+            "ariaLabel": "Agent 注册目标",
+            "pi": "Pi",
+            "grok": "Grok Build",
+            "statusLabel": "注册状态",
+            "statusLoading": "正在检查注册…",
+            "statusError": "无法检查注册状态。",
+            "registered": "已注册",
+            "unregistered": "未注册",
+            "statusUnchecked": "尚未检查",
+            "pathPending": "正在解析目标路径…",
+            "refresh": "刷新注册状态 · {{agent}} · {{name}}",
+            "register": "注册到 {{agent}} · {{name}}",
+            "history": "{{agent}} 注册历史 · {{name}}",
+            "historyTitle": "{{agent}} 注册历史 · {{name}}"
         }
     },
     "agents": {
@@ -1543,7 +1568,19 @@
             "confirm": "安装",
             "installing": "正在从市场安装…",
             "cancel": "取消",
-            "done": "完成"
+            "done": "完成",
+            "detailTitle": "市场技能详情",
+            "factSkillId": "技能 ID",
+            "factInstalls": "安装次数",
+            "close": "关闭",
+            "detailLoading": "正在加载描述…",
+            "installsCount": "{{count}} 次安装",
+            "prevPage": "上一页",
+            "nextPage": "下一页",
+            "pageStatus": "第 {{page}} 页，共 {{pages}} 页",
+            "paginationLabel": "市场分页",
+            "factCatalogInstall": "目录安装命令",
+            "catalogInstallHint": "skills.sh 公布的命令。vibemate 仍通过下方「审阅 → Git 预览」安装。"
         },
         "install": {
             "open": "从来源安装",
@@ -1577,7 +1614,9 @@
             "resultSkipped_one": "跳过 {{count}} 个文件夹：",
             "resultSkipped_other": "跳过 {{count}} 个文件夹：",
             "cancel": "取消",
-            "done": "完成"
+            "done": "完成",
+            "resultImported": "已导入 {{count}} 个技能。",
+            "resultSkipped": "跳过 {{count}} 个。"
         },
         "delete": {
             "label": "删除“{{name}}”",
@@ -1703,6 +1742,9 @@
                 "keep": "保留当前库内副本",
                 "replace": "用候选内容替换库内副本"
             }
-        }
+        },
+        "count": "共 {{count}} 个技能",
+        "reportImported": "已导入 {{count}} 个技能。",
+        "reportSkipped": "跳过 {{count}} 个。"
     }
 }

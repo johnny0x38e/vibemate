@@ -47,7 +47,8 @@
     --radius-control: 6px;
     --radius-card: 8px;
     /* Height of the overlay titlebar strip (macOS traffic lights / drag row).
-     * Portaled modals sit below this so they never cover window controls. */
+     * Dialog popups sit below this so they never cover window controls.
+     * Dialog backdrops cover the full window (see dialogOverlay.module.css). */
     --titlebar-height: 44px;
     /* Portaled controls must paint above the application content. */
     --layer-popover: 1;

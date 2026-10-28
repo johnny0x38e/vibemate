@@ -142,9 +142,6 @@ export function McpPiPreview({
                                     />
                                 </DetailPanel>
                                 <p className={styles["notice"]}>
-                                    {t("mcp.piPreview.runtime")}
-                                </p>
-                                <p className={styles["notice"]}>
                                     {t("mcp.piPreview.credentials")}
                                 </p>
                                 {proposal.sessionRelativeCwd && (
