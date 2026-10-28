@@ -141,7 +141,7 @@ pub async fn get_marketplace_skill_detail(
     if body.len() > MAX_HTML_BYTES {
         return Err(SkillError::MarketplaceResponseInvalid);
     }
-    Ok(parse_skill_page_detail(source, skill, &body)?)
+    parse_skill_page_detail(source, skill, &body)
 }
 
 /// Validate a marketplace row and show the Git command that would run.
@@ -708,11 +708,11 @@ fn decode_json_string_fragment(escaped: &str) -> String {
                         None => break,
                     }
                 }
-                if let Ok(code) = u32::from_str_radix(&hex, 16) {
-                    if let Some(decoded) = char::from_u32(code) {
-                        out.push(decoded);
-                        continue;
-                    }
+                if let Ok(code) = u32::from_str_radix(&hex, 16)
+                    && let Some(decoded) = char::from_u32(code)
+                {
+                    out.push(decoded);
+                    continue;
                 }
                 out.push('u');
                 out.push_str(&hex);
