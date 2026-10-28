@@ -809,9 +809,7 @@ export async function listMarketplaceSkills(
 export async function getMarketplaceSkillDetail(
     source: string,
     skillId: string,
-): Promise<
-    { kind: "preview" } | { kind: "desktop"; skill: MarketplaceSkill }
-> {
+): Promise<{ kind: "preview" } | { kind: "desktop"; skill: MarketplaceSkill }> {
     if (!isTauri()) return { kind: "preview" };
     const trimmedSource = source.trim();
     const trimmedSkillId = skillId.trim();
@@ -830,10 +828,7 @@ export async function getMarketplaceSkillDetail(
     );
     // Detail must carry a real description; never accept a null placeholder.
     if (skill.description === null) invalid();
-    if (
-        skill.source !== trimmedSource ||
-        skill.skillId !== trimmedSkillId
-    )
+    if (skill.source !== trimmedSource || skill.skillId !== trimmedSkillId)
         invalid();
     return { kind: "desktop", skill };
 }

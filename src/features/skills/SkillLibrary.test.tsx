@@ -206,8 +206,9 @@ beforeEach(() => {
         kind: "desktop",
         skills: [marketplaceRow],
     });
-    getMarketplaceDetail.mockReset().mockImplementation(
-        (source: string, skillId: string) =>
+    getMarketplaceDetail
+        .mockReset()
+        .mockImplementation((source: string, skillId: string) =>
             Promise.resolve({
                 kind: "desktop" as const,
                 skill: {
@@ -224,7 +225,7 @@ beforeEach(() => {
                     catalogInstallCommand: null,
                 },
             }),
-    );
+        );
     previewMarketplace.mockReset().mockResolvedValue({
         kind: "desktop",
         preview: {
@@ -849,8 +850,8 @@ test("marketplace deferred catalog settle clears loading after resolve", async (
                     name: "tdd",
                     installs: 42,
                     description: null,
-                summary: null,
-                catalogInstallCommand: null,
+                    summary: null,
+                    catalogInstallCommand: null,
                 },
             ],
         });
@@ -950,9 +951,7 @@ test("marketplace catalog uses a card grid with client-side paging", async () =>
         }),
     ).toBeDefined();
     // Page size 12: the 13th card waits on page 2.
-    expect(
-        screen.queryByRole("button", { name: /skill-13/ }),
-    ).toBeNull();
+    expect(screen.queryByRole("button", { name: /skill-13/ })).toBeNull();
     expect(
         screen.getByRole("navigation", { name: "Marketplace pages" }),
     ).toBeDefined();
@@ -962,18 +961,14 @@ test("marketplace catalog uses a card grid with client-side paging", async () =>
             name: /skill-13/,
         }),
     ).toBeDefined();
-    expect(
-        screen.queryByRole("button", { name: /skill-01/ }),
-    ).toBeNull();
+    expect(screen.queryByRole("button", { name: /skill-01/ })).toBeNull();
     fireEvent.click(screen.getByRole("button", { name: "Page 1 of 2" }));
     expect(
         await screen.findByRole("button", {
             name: /skill-01/,
         }),
     ).toBeDefined();
-    expect(
-        screen.queryByRole("button", { name: /skill-13/ }),
-    ).toBeNull();
+    expect(screen.queryByRole("button", { name: /skill-13/ })).toBeNull();
 });
 
 test("marketplace board change resets paging to page 1", async () => {
@@ -988,8 +983,8 @@ test("marketplace board change resets paging to page 1", async () => {
                 name: label,
                 installs: n,
                 description: null,
-            summary: null,
-            catalogInstallCommand: null,
+                summary: null,
+                catalogInstallCommand: null,
             };
         });
     listMarketplace
@@ -1053,8 +1048,8 @@ test("marketplace search resets paging to page 1", async () => {
                 name: "found-skill",
                 installs: 1,
                 description: null,
-            summary: null,
-            catalogInstallCommand: null,
+                summary: null,
+                catalogInstallCommand: null,
             },
         ],
     });
@@ -1170,14 +1165,10 @@ test("marketplace detail dialog can review and install", async () => {
     expect(await screen.findByRole("button", { name: "Done" })).toBeDefined();
 });
 
-
 test("marketplace detail dialog shows a loading state then the real description", async () => {
     list.mockResolvedValue(page([row]));
     let finish:
-        | ((value: {
-              kind: "desktop";
-              skill: MarketplaceSkill;
-          }) => void)
+        | ((value: { kind: "desktop"; skill: MarketplaceSkill }) => void)
         | undefined;
     getMarketplaceDetail.mockReset().mockImplementation(
         () =>
@@ -1208,8 +1199,8 @@ test("marketplace detail dialog shows a loading state then the real description"
                 installs: 42,
                 description:
                     "Test-driven development skill from the catalog page.",
-            summary: null,
-            catalogInstallCommand: null,
+                summary: null,
+                catalogInstallCommand: null,
             },
         });
     });
@@ -1257,8 +1248,7 @@ test("marketplace detail dialog reports a failed description fetch", async () =>
 });
 
 test("marketplace card summary truncates a long description", async () => {
-    const long =
-        "A".repeat(130) + " end-marker-should-not-appear-on-the-card";
+    const long = "A".repeat(130) + " end-marker-should-not-appear-on-the-card";
     list.mockResolvedValue(page([row]));
     getMarketplaceDetail.mockReset().mockResolvedValue({
         kind: "desktop",
@@ -1269,8 +1259,8 @@ test("marketplace card summary truncates a long description", async () => {
             name: "tdd",
             installs: 42,
             description: long,
-        summary: null,
-        catalogInstallCommand: null,
+            summary: null,
+            catalogInstallCommand: null,
         },
     });
     await setup();
@@ -1351,9 +1341,7 @@ test("marketplace description prefetch covers only the current page", async () =
         }),
     ).toBeDefined();
     expect(
-        getMarketplaceDetail.mock.calls.some(
-            (call) => call[1] === "skill-13",
-        ),
+        getMarketplaceDetail.mock.calls.some((call) => call[1] === "skill-13"),
     ).toBe(false);
 
     fireEvent.click(screen.getByRole("button", { name: "Next" }));
@@ -1491,9 +1479,7 @@ test("marketplace description prefetch keeps concurrency limited", async () => {
     );
     await screen.findByRole("button", { name: /skill-01/ });
     await waitFor(() => {
-        expect(finishers.length).toBe(
-            MARKETPLACE_DETAIL_PREFETCH_CONCURRENCY,
-        );
+        expect(finishers.length).toBe(MARKETPLACE_DETAIL_PREFETCH_CONCURRENCY);
     });
     expect(maxInFlight).toBe(MARKETPLACE_DETAIL_PREFETCH_CONCURRENCY);
     act(() => {

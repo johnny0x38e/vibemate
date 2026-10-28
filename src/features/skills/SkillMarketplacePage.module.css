@@ -335,7 +335,6 @@
     margin-top: var(--space-md);
 }
 
-
 /* Marketplace detail overlay: wider than the shared delete dialog (28rem). */
 .detailPopup {
     position: fixed;

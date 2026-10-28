@@ -286,7 +286,10 @@ export function SkillMarketplacePage({
                                 result.skill.summary ??
                                 result.skill.description;
                             // Never invent copy; skip empty/missing detail payloads.
-                            if (typeof text === "string" && text.trim() !== "") {
+                            if (
+                                typeof text === "string" &&
+                                text.trim() !== ""
+                            ) {
                                 mergeDetail(row.id, result.skill);
                             }
                         }
@@ -447,14 +450,18 @@ export function SkillMarketplacePage({
             setDetailCopy({ kind: "ready", text });
             // Merge enriched fields into selection + catalog for reuse.
             setSelected((current) =>
-                current?.id === row.id ? { ...current, ...result.skill } : current,
+                current?.id === row.id
+                    ? { ...current, ...result.skill }
+                    : current,
             );
             setCatalog((current) => {
                 if (current.kind !== "ready") return current;
                 return {
                     kind: "ready",
                     skills: current.skills.map((skill) =>
-                        skill.id === row.id ? { ...skill, ...result.skill } : skill,
+                        skill.id === row.id
+                            ? { ...skill, ...result.skill }
+                            : skill,
                     ),
                 };
             });
@@ -748,9 +755,7 @@ export function SkillMarketplacePage({
                                                                         hierarchy[
                                                                             "hint"
                                                                         ],
-                                                                    ].join(
-                                                                        " ",
-                                                                    )}
+                                                                    ].join(" ")}
                                                                 >
                                                                     {truncateCardSummary(
                                                                         row.description,
@@ -778,9 +783,7 @@ export function SkillMarketplacePage({
                                                                         hierarchy[
                                                                             "hint"
                                                                         ],
-                                                                    ].join(
-                                                                        " ",
-                                                                    )}
+                                                                    ].join(" ")}
                                                                 >
                                                                     {t(
                                                                         "skills.marketplace.installsCount",
@@ -1030,13 +1033,15 @@ export function SkillMarketplacePage({
                         >
                             {selected !== null && (
                                 <>
-                                    <Dialog.Title className={styles["detailTitle"]}>
+                                    <Dialog.Title
+                                        className={styles["detailTitle"]}
+                                    >
                                         {t("skills.marketplace.detailTitle")}
                                     </Dialog.Title>
                                     {/*
-                                      * Main body prefers Summary, else meta description.
-                                      * Loading/error stay short; failure never invents text.
-                                      */}
+                                     * Main body prefers Summary, else meta description.
+                                     * Loading/error stay short; failure never invents text.
+                                     */}
                                     {detailCopy.kind === "loading" ? (
                                         <Dialog.Description
                                             className={styles["hint"]}
