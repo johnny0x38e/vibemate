@@ -1441,6 +1441,123 @@ fn concurrent_openers_apply_each_migration_exactly_once() {
 }
 
 #[test]
+fn prerenumber_pi_mcp_tables_upgrade_and_allow_claude_code_targets() {
+    let directory = TestDirectory::new("pi-mcp-prerenumber");
+    let path = directory.path.join(DATABASE_FILE_NAME);
+    let skill_id = "0123456789abcdef0123456789abcdef";
+    let definition_id = "fedcba9876543210fedcba9876543210";
+    let digest = "ab".repeat(32);
+    let generation = "cd".repeat(16);
+    {
+        let old = Storage::open_file(&path, &MIGRATIONS[..30]).expect("v30 database");
+        let connection = old.lock().expect("lock v30 connection");
+        connection
+            .execute_batch(&format!(
+                "INSERT INTO skill(
+                    id, name, description, origin_path, content_digest,
+                    file_count, byte_size, revision, imported_at, updated_at
+                 ) VALUES(
+                    '{skill_id}', 'demo', 'A test skill.', '/tmp/demo', '{digest}',
+                    1, 1, 1, 1, 1
+                 );
+                 INSERT INTO skill_deployment VALUES(
+                    '{skill_id}', 'pi', '/home/test/.pi/agent', 'demo', 'symlink',
+                    1, '{digest}', 1
+                 );
+                 INSERT INTO mcp_definition(
+                    id, display_name, server_name, namespace, enabled, revision,
+                    connection, created_at, updated_at
+                 ) VALUES(
+                    '{definition_id}', 'Demo', 'demo', 'demo', 1, 1, '{{}}', 1, 1
+                 );
+                 CREATE TABLE pi_mcp_deployment (
+                    config_root TEXT NOT NULL CHECK(length(config_root) BETWEEN 1 AND 4096),
+                    definition_id TEXT NOT NULL REFERENCES mcp_definition(id) ON DELETE RESTRICT,
+                    server_name TEXT NOT NULL CHECK(length(server_name) BETWEEN 1 AND 64),
+                    namespace TEXT NOT NULL CHECK(length(namespace) BETWEEN 1 AND 64),
+                    definition_revision INTEGER NOT NULL CHECK(definition_revision>=1),
+                    entry_digest TEXT NOT NULL CHECK(length(entry_digest)=64 AND entry_digest NOT GLOB '*[^0-9a-f]*'),
+                    generation TEXT NOT NULL CHECK(length(generation)=32 AND generation NOT GLOB '*[^0-9a-f]*'),
+                    enabled INTEGER NOT NULL CHECK(enabled IN (0,1)),
+                    PRIMARY KEY(config_root,definition_id),
+                    UNIQUE(config_root,namespace)
+                 ) STRICT, WITHOUT ROWID;
+                 CREATE TABLE pi_mcp_change (
+                    id TEXT PRIMARY KEY CHECK(length(id)=32 AND id NOT GLOB '*[^0-9a-f]*'),
+                    config_root TEXT NOT NULL CHECK(length(config_root) BETWEEN 1 AND 4096),
+                    definition_id TEXT NOT NULL CHECK(length(definition_id)=32),
+                    server_name TEXT NOT NULL CHECK(length(server_name) BETWEEN 1 AND 64),
+                    definition_revision INTEGER NOT NULL CHECK(definition_revision>=1),
+                    action TEXT NOT NULL CHECK(action IN ('deploy','enable','disable','revoke','restore')),
+                    state TEXT NOT NULL CHECK(state IN ('prepared','completed','aborted')),
+                    before_digest TEXT CHECK(before_digest IS NULL OR length(before_digest)=64),
+                    intended_digest TEXT CHECK(intended_digest IS NULL OR length(intended_digest)=64),
+                    before_owner TEXT CHECK(before_owner IS NULL OR json_valid(before_owner)),
+                    after_owner TEXT CHECK(after_owner IS NULL OR json_valid(after_owner)),
+                    operation_id TEXT REFERENCES config_operation(id) ON DELETE RESTRICT,
+                    created_at INTEGER NOT NULL CHECK(created_at>=0)
+                 ) STRICT;
+                 CREATE UNIQUE INDEX pi_mcp_one_pending_root ON pi_mcp_change(config_root) WHERE state='prepared';
+                 CREATE INDEX pi_mcp_history ON pi_mcp_change(config_root,definition_id,created_at DESC,id DESC);
+                 INSERT INTO pi_mcp_deployment(
+                    config_root, definition_id, server_name, namespace,
+                    definition_revision, entry_digest, generation, enabled
+                 ) VALUES(
+                    '/home/test/.pi/agent', '{definition_id}', 'demo', 'demo',
+                    1, '{digest}', '{generation}', 1
+                 );"
+            ))
+            .expect("seed the pre-merge schema 31 shape");
+        // The old build's version 31 was the MCP DDL, not the Claude Code check.
+        connection
+            .pragma_update(None, "user_version", 31)
+            .expect("stamp the pre-merge version");
+        assert!(
+            connection
+                .execute(
+                    "INSERT INTO skill_deployment VALUES(
+                        ?1, 'claudeCode', '/home/test/.claude', 'demo', 'copy', 1, ?2, 1
+                     )",
+                    rusqlite::params![skill_id, digest],
+                )
+                .is_err(),
+            "schema 31 from that build still rejects Claude Code"
+        );
+    }
+
+    let storage = Storage::open_in_directory(&directory.path).expect("upgrade");
+    assert_eq!(
+        storage.schema_version().expect("schema version"),
+        latest_schema_version()
+    );
+    let connection = storage.lock().expect("lock upgraded connection");
+    let kept_target: String = connection
+        .query_row(
+            "SELECT agent_id FROM skill_deployment WHERE skill_id = ?1 AND agent_id = 'pi'",
+            [skill_id],
+            |row| row.get(0),
+        )
+        .expect("existing Pi deployment");
+    assert_eq!(kept_target, "pi");
+    let kept_mcp: i64 = connection
+        .query_row(
+            "SELECT COUNT(*) FROM pi_mcp_deployment WHERE definition_id = ?1",
+            [definition_id],
+            |row| row.get(0),
+        )
+        .expect("existing Pi MCP row");
+    assert_eq!(kept_mcp, 1);
+    connection
+        .execute(
+            "INSERT INTO skill_deployment VALUES(
+                ?1, 'claudeCode', '/home/test/.claude', 'demo', 'copy', 1, ?2, 1
+             )",
+            rusqlite::params![skill_id, digest],
+        )
+        .expect("Claude Code target after upgrade");
+}
+
+#[test]
 fn claude_code_skill_deployment_migration_keeps_existing_targets() {
     let directory = TestDirectory::new("skill-deploy-claude-code");
     let path = directory.path.join(DATABASE_FILE_NAME);

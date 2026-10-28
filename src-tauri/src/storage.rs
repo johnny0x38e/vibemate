@@ -624,12 +624,37 @@ const MIGRATIONS: &[Migration] = &[
         ALTER TABLE skill_deployment_v31 RENAME TO skill_deployment;",
     },
     Migration {
-        // Renumbered from 31 during the feat-mcp merge; v31 is the Claude Code
-        // Skill deployment target on main.
         version: 32,
-        // MCP owns entries, never whole files. Intents bridge the filesystem and
-        // SQLite commit; history keeps only references/digests, never values.
-        sql: "CREATE TABLE pi_mcp_deployment (
+        // Pi MCP owns entries, never whole files. Intents bridge the filesystem
+        // and the SQLite commit; history keeps only references and digests.
+        //
+        // A pre-merge build created these tables as schema 31 and stamped
+        // `user_version` 31. Main then used 31 for the Claude Code skill check
+        // and moved this DDL to 32. Those databases already have the tables, so
+        // a plain CREATE fails and leaves storage closed. They also skipped the
+        // Claude Code rebuild, so this step repeats that rebuild (a no-op copy
+        // when version 31 already did it) and creates the MCP tables only when
+        // they are absent. Existing rows stay in place.
+        sql: "CREATE TABLE skill_deployment_v32 (
+            skill_id TEXT NOT NULL REFERENCES skill(id) ON DELETE RESTRICT,
+            agent_id TEXT NOT NULL CHECK(agent_id IN ('pi','grokBuild','claudeCode')),
+            config_root TEXT NOT NULL CHECK(length(config_root) BETWEEN 1 AND 4096),
+            target_name TEXT NOT NULL CHECK(length(target_name) BETWEEN 1 AND 64),
+            mode TEXT NOT NULL CHECK(mode IN ('symlink','copy')),
+            skill_revision INTEGER NOT NULL CHECK(skill_revision >= 1),
+            content_digest TEXT NOT NULL
+                CHECK(length(content_digest)=64 AND content_digest NOT GLOB '*[^0-9a-f]*'),
+            deployed_at INTEGER NOT NULL CHECK(deployed_at >= 0),
+            PRIMARY KEY(agent_id, config_root, target_name),
+            UNIQUE(skill_id, agent_id, config_root)
+        ) STRICT, WITHOUT ROWID;
+        INSERT INTO skill_deployment_v32
+            SELECT skill_id, agent_id, config_root, target_name, mode,
+                   skill_revision, content_digest, deployed_at
+            FROM skill_deployment;
+        DROP TABLE skill_deployment;
+        ALTER TABLE skill_deployment_v32 RENAME TO skill_deployment;
+        CREATE TABLE IF NOT EXISTS pi_mcp_deployment (
             config_root TEXT NOT NULL CHECK(length(config_root) BETWEEN 1 AND 4096),
             definition_id TEXT NOT NULL REFERENCES mcp_definition(id) ON DELETE RESTRICT,
             server_name TEXT NOT NULL CHECK(length(server_name) BETWEEN 1 AND 64),
@@ -641,7 +666,7 @@ const MIGRATIONS: &[Migration] = &[
             PRIMARY KEY(config_root,definition_id),
             UNIQUE(config_root,namespace)
         ) STRICT, WITHOUT ROWID;
-        CREATE TABLE pi_mcp_change (
+        CREATE TABLE IF NOT EXISTS pi_mcp_change (
             id TEXT PRIMARY KEY CHECK(length(id)=32 AND id NOT GLOB '*[^0-9a-f]*'),
             config_root TEXT NOT NULL CHECK(length(config_root) BETWEEN 1 AND 4096),
             definition_id TEXT NOT NULL CHECK(length(definition_id)=32),
@@ -656,8 +681,8 @@ const MIGRATIONS: &[Migration] = &[
             operation_id TEXT REFERENCES config_operation(id) ON DELETE RESTRICT,
             created_at INTEGER NOT NULL CHECK(created_at>=0)
         ) STRICT;
-        CREATE UNIQUE INDEX pi_mcp_one_pending_root ON pi_mcp_change(config_root) WHERE state='prepared';
-        CREATE INDEX pi_mcp_history ON pi_mcp_change(config_root,definition_id,created_at DESC,id DESC);",
+        CREATE UNIQUE INDEX IF NOT EXISTS pi_mcp_one_pending_root ON pi_mcp_change(config_root) WHERE state='prepared';
+        CREATE INDEX IF NOT EXISTS pi_mcp_history ON pi_mcp_change(config_root,definition_id,created_at DESC,id DESC);",
     },
     Migration {
         version: 33,

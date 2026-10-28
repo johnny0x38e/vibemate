@@ -187,6 +187,8 @@ GitHub release notes are extracted from the matching version section only.
 
 ### Fixed
 
+- Startup can read the saved language preference when the private database already contains the Pi MCP tables from the pre-merge schema 31. That numbering clash made the current upgrade fail and closed storage before the app could continue. The upgrade keeps those tables and their rows, and records Claude Code as a skill deployment target.
+
 - Disabling a deployed skill on Windows removes the owned directory link. The link is deleted on its own; the library copy it points at stays in place.
 
 - Provider rows keep their name column readable in a narrow window. The protocol and model-count chips now move to a second line based on the list's own width, including when the sidebar is expanded, so a long name or wide tags can no longer collapse the text to one character per line.
