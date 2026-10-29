@@ -187,6 +187,12 @@ pub(crate) fn render_text(
 }
 
 /// Format used by one Agent adapter.
+///
+/// The MCP kinds and the Codex kinds summarize masked JSON entry fragments,
+/// not their native files, so they map to JSON even where the native file is
+/// TOML. They are never a version-history scope (`agents::history` builds
+/// scopes only for Claude Code, Pi and Grok settings). Before adding one, map
+/// it to its native format here, or full-text reads fail as unavailable.
 pub(crate) fn format_for(kind: OperationKind) -> ConfigFormat {
     match kind {
         // Entry-level MCP summaries use JSON fragments for both Agents; the
@@ -196,7 +202,10 @@ pub(crate) fn format_for(kind: OperationKind) -> ConfigFormat {
         | OperationKind::PiSettings
         | OperationKind::PiMcp
         | OperationKind::GrokMcp
-        | OperationKind::ClaudeMcp => ConfigFormat::Json,
+        | OperationKind::ClaudeMcp
+        // Codex entry-level previews also summarize masked JSON fragments.
+        | OperationKind::CodexSettings
+        | OperationKind::CodexMcp => ConfigFormat::Json,
         OperationKind::GrokSettings => ConfigFormat::Toml,
     }
 }
@@ -227,14 +236,69 @@ enum Node {
     Bool(bool),
     Number(String),
     String(String),
+    /// A string whose embedded credential (URL query/userinfo, argument) was
+    /// masked. `raw` only keeps a real change visible to the comparison; it is
+    /// never rendered.
+    Masked {
+        shown: String,
+        raw: String,
+    },
     Array(Vec<Node>),
     Object(Vec<(String, Node)>),
 }
 
 fn parse_node(format: ConfigFormat, bytes: &[u8]) -> Result<Node, &'static str> {
-    match format {
-        ConfigFormat::Json => Ok(node_from_json(&parse_json(bytes)?)),
-        ConfigFormat::Toml => Ok(node_from_toml(&parse_toml(bytes)?)),
+    let mut node = match format {
+        ConfigFormat::Json => node_from_json(&parse_json(bytes)?),
+        ConfigFormat::Toml => node_from_toml(&parse_toml(bytes)?),
+    };
+    mask_node(&mut node);
+    Ok(node)
+}
+
+/// Mask credentials inside public URL fields and `args` arrays.
+fn mask_node(node: &mut Node) {
+    let mask = |node: &mut Node, shown: String| {
+        if let Node::String(raw) = node
+            && *raw != shown
+        {
+            let raw = std::mem::take(raw);
+            *node = Node::Masked { shown, raw };
+        }
+    };
+    match node {
+        Node::Object(entries) => {
+            for (key, child) in entries.iter_mut() {
+                match child {
+                    Node::String(text) if crate::secret_text::is_url_key(key) => {
+                        let shown = crate::secret_text::mask_url(text);
+                        mask(child, shown);
+                    }
+                    Node::Array(items) if key == "args" => {
+                        let texts: Vec<String> = items
+                            .iter()
+                            .filter_map(|item| match item {
+                                Node::String(text) => Some(text.clone()),
+                                _ => None,
+                            })
+                            .collect();
+                        let mut masked =
+                            crate::secret_text::mask_args(texts.iter().map(String::as_str))
+                                .into_iter();
+                        for item in items.iter_mut() {
+                            if matches!(item, Node::String(_))
+                                && let Some(shown) = masked.next()
+                            {
+                                mask(item, shown);
+                            }
+                        }
+                    }
+                    _ => mask_node(child),
+                }
+            }
+        }
+        Node::Array(items) => items.iter_mut().for_each(mask_node),
+        _ => {}
     }
 }
 
@@ -535,6 +599,7 @@ fn node_text(node: &Node) -> String {
         Node::Null => "null".to_owned(),
         Node::Bool(value) => value.to_string(),
         Node::Number(value) | Node::String(value) => value.clone(),
+        Node::Masked { shown, .. } => shown.clone(),
         Node::Array(_) | Node::Object(_) => "[complex value]".to_owned(),
     }
 }
@@ -633,6 +698,7 @@ fn sanitize_json(value: &mut Value) {
                 if is_secret_key(key) {
                     *child = Value::String(SECRET_PLACEHOLDER.to_owned());
                 } else {
+                    crate::secret_text::mask_public_field(key, child);
                     sanitize_json(child);
                 }
             }
@@ -657,6 +723,9 @@ fn sanitize_item(key: &str, item: &mut Item) {
         *item = Item::Value(TomlValue::from(SECRET_PLACEHOLDER));
         return;
     }
+    if let Some(value) = item.as_value_mut() {
+        mask_public_toml(key, value);
+    }
     if let Some(table) = item.as_table_like_mut() {
         for (child_key, child) in table.iter_mut() {
             sanitize_item(child_key.get(), child);
@@ -668,6 +737,46 @@ fn sanitize_item(key: &str, item: &mut Item) {
     }
 }
 
+/// Apply `secret_text` masking (URL query/userinfo, `args`) to a TOML value
+/// under `key`, through its JSON form so both formats share one rule.
+fn mask_public_toml(key: &str, value: &mut TomlValue) {
+    let json = match &*value {
+        TomlValue::String(text) => Value::String(text.value().clone()),
+        TomlValue::Array(items) => Value::Array(
+            items
+                .iter()
+                .map(|item| match item.as_str() {
+                    Some(text) => Value::String(text.to_owned()),
+                    None => Value::Null,
+                })
+                .collect(),
+        ),
+        _ => return,
+    };
+    let mut masked = json.clone();
+    crate::secret_text::mask_public_field(key, &mut masked);
+    if masked == json {
+        return;
+    }
+    match (value, masked) {
+        (TomlValue::String(text), Value::String(new)) => {
+            let decor = text.decor().clone();
+            *text = toml_edit::Formatted::new(new);
+            *text.decor_mut() = decor;
+        }
+        (TomlValue::Array(items), Value::Array(new)) => {
+            for (item, new) in items.iter_mut().zip(new) {
+                if let (Some(_), Value::String(new)) = (item.as_str(), new) {
+                    let decor = item.decor().clone();
+                    *item = TomlValue::from(new);
+                    *item.decor_mut() = decor;
+                }
+            }
+        }
+        _ => {}
+    }
+}
+
 fn sanitize_toml_value(value: &mut TomlValue) {
     match value {
         TomlValue::InlineTable(table) => {
@@ -675,6 +784,7 @@ fn sanitize_toml_value(value: &mut TomlValue) {
                 if is_secret_key(key.get()) {
                     *child = TomlValue::from(SECRET_PLACEHOLDER);
                 } else {
+                    mask_public_toml(key.get(), child);
                     sanitize_toml_value(child);
                 }
             }
@@ -935,5 +1045,48 @@ mod tests {
         );
         assert_eq!(blank.reason, None);
         assert!(!json(b"{}").truncated);
+    }
+
+    #[test]
+    fn history_masks_url_query_and_argument_credentials_but_keeps_the_change() {
+        let current = br#"{"mcpServers":{"a":{"args":["--token","tok-new","run"],"url":"https://h/?key=k-new&x=1"}}}"#;
+        let target = br#"{"mcpServers":{"a":{"args":["--token","tok-old","go"],"url":"https://h/?key=k-old&x=1"}}}"#;
+        let summary = summarize(OperationKind::ClaudeMcp, Some(current), Some(target));
+        let text = format!("{:?}", summary.changes);
+        for secret in ["tok-new", "tok-old", "k-new", "k-old"] {
+            assert!(!text.contains(secret), "{secret} leaked");
+        }
+        let by_path = |path: &str| {
+            summary
+                .changes
+                .iter()
+                .find(|change| change.path == path)
+                .unwrap_or_else(|| panic!("missing {path}"))
+        };
+        // A token-only change stays visible as a (masked) replacement.
+        assert_eq!(
+            by_path("mcpServers.a.args[1]").before.as_deref(),
+            Some(SECRET_PLACEHOLDER)
+        );
+        let url = by_path("mcpServers.a.url");
+        assert_eq!(
+            url.before.as_deref(),
+            Some(format!("https://h/?key={SECRET_PLACEHOLDER}&x=1").as_str())
+        );
+        assert_eq!(by_path("mcpServers.a.args[2]").after.as_deref(), Some("go"));
+
+        let toml = b"[mcp_servers.a]\nargs = [\"--api-key\", \"sk-toml\"] # keep\nurl = \"https://u:pw-toml@h/?token=t-toml\"\n";
+        let text = render_text(ConfigFormat::Toml, toml).expect("toml");
+        let text = format!("{text:?}");
+        for secret in ["sk-toml", "pw-toml", "t-toml"] {
+            assert!(!text.contains(secret), "{secret} leaked");
+        }
+        assert!(text.contains("# keep"));
+        let json = br#"{"servers":{"a":{"args":["Bearer","b-json"],"serverUrl":"https://h/?access_token=a-json"}}}"#;
+        let text = format!("{:?}", render_text(ConfigFormat::Json, json).expect("json"));
+        assert!(
+            !text.contains("b-json") && !text.contains("a-json"),
+            "{text}"
+        );
     }
 }

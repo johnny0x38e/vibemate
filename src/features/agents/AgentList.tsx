@@ -35,6 +35,10 @@ import { AgentPage } from "./AgentPage";
 import { AgentVersionPanel } from "./AgentVersionPanel";
 import { CurrentConfigPin, RestoreView } from "./RestoreView";
 import { WriteConfigDialog } from "./WriteConfigDialog";
+import { CodexWriteDialog } from "./CodexWriteDialog";
+import { CodexSettingsPanel } from "./CodexSettingsPanel";
+import { codexActiveModel } from "./codexSummary";
+import { readCodexSettingsState } from "../../lib/desktop/codex";
 import { AgentSkillPanel } from "./AgentSkillPanel";
 import { AgentMcpPanel } from "./AgentMcpPanel";
 import underlineTabs from "../../components/underlineTabs.module.css";
@@ -60,6 +64,9 @@ type AgentsPage = { kind: "list" } | { kind: "detail"; id: AgentId };
 
 type AgentSegment = "history" | "skill" | "mcp" | "install";
 
+/** Agents with a model write flow: the shared adapters plus Codex. */
+type WriteTarget = ConfigurableAgent | "codex";
+
 function failure(error: unknown): DiscoveryErrorCode {
     return error instanceof DiscoveryRequestError
         ? error.code
@@ -72,6 +79,11 @@ function failure(error: unknown): DiscoveryErrorCode {
  * Detection is not the same claim: every catalog entry can be discovered, while
  * the model-configuration cards appear only where a verified adapter exists.
  */
+/** Codex writes through `codex.ts`, not the shared ConfigurableAgent adapter. */
+function hasWriteFlow(id: AgentId): id is WriteTarget {
+    return hasConfigAdapter(id) || id === "codex";
+}
+
 function hasConfigAdapter(id: AgentId): id is ConfigurableAgent {
     return id === "claudeCode" || id === "pi" || id === "grokBuild";
 }
@@ -103,9 +115,7 @@ export function AgentList({
     const [currentConfig, setCurrentConfig] =
         useState<HistoryCurrentConfig | null>(null);
     /** List-row Write dialog target; null when closed. */
-    const [writeTarget, setWriteTarget] = useState<ConfigurableAgent | null>(
-        null,
-    );
+    const [writeTarget, setWriteTarget] = useState<WriteTarget | null>(null);
     const writeReturnFocus = useRef<HTMLElement | null>(null);
     /**
      * List-card summary: the model each Agent currently names. `ours` shows
@@ -113,7 +123,7 @@ export function AgentList({
      * user, and `unknown` stays out of the row until a read succeeds.
      */
     const [listSummaries, setListSummaries] = useState<
-        Partial<Record<ConfigurableAgent, ActiveAgentModel>>
+        Partial<Record<WriteTarget, ActiveAgentModel>>
     >({});
     const [versions, setVersions] = useState<
         Partial<Record<AgentId, AgentVersionResult>>
@@ -222,8 +232,22 @@ export function AgentList({
         if (hidden || page.kind !== "list") return;
         let current = true;
         const agents: ConfigurableAgent[] = ["claudeCode", "pi", "grokBuild"];
-        void Promise.all(
-            agents.map(async (agentId) => {
+        // Codex keeps its own provider/default state in codex.ts.
+        const codexRow = async (): Promise<
+            readonly ["codex", ActiveAgentModel]
+        > => {
+            try {
+                return [
+                    "codex",
+                    codexActiveModel(await readCodexSettingsState()),
+                ] as const;
+            } catch {
+                return ["codex", { kind: "unknown" }] as const;
+            }
+        };
+        void Promise.all([
+            codexRow(),
+            ...agents.map(async (agentId) => {
                 const empty: ActiveAgentModel = { kind: "unknown" };
                 try {
                     const result = await readConfigurationHistory(agentId);
@@ -235,10 +259,9 @@ export function AgentList({
                     return [agentId, empty] as const;
                 }
             }),
-        ).then((rows) => {
+        ]).then((rows) => {
             if (!current) return;
-            const next: Partial<Record<ConfigurableAgent, ActiveAgentModel>> =
-                {};
+            const next: Partial<Record<WriteTarget, ActiveAgentModel>> = {};
             for (const row of rows) {
                 next[row[0]] = row[1];
             }
@@ -426,15 +449,12 @@ export function AgentList({
     function openDetail(id: AgentId): void {
         if (state.kind === "loading" || versionBusy) return;
         setWriteTarget(null);
-        setSegment(hasConfigAdapter(id) ? "history" : "skill");
+        setSegment(hasWriteFlow(id) ? "history" : "skill");
         setCurrentConfig(null);
         setPage({ kind: "detail", id });
     }
 
-    function openWrite(
-        id: ConfigurableAgent,
-        returnEl: HTMLElement | null,
-    ): void {
+    function openWrite(id: WriteTarget, returnEl: HTMLElement | null): void {
         if (state.kind === "loading" || versionBusy) return;
         writeReturnFocus.current = returnEl;
         setWriteTarget(id);
@@ -658,7 +678,7 @@ export function AgentList({
                         const row = observation(id);
                         const reported =
                             row === undefined ? undefined : cliVersion(row);
-                        const summary = hasConfigAdapter(id)
+                        const summary = hasWriteFlow(id)
                             ? listSummaries[id]
                             : undefined;
                         const providerModel =
@@ -686,9 +706,7 @@ export function AgentList({
                         const ownConfiguration =
                             providerModel === null &&
                             found &&
-                            (hasConfigAdapter(id)
-                                ? summary?.kind === "own"
-                                : true);
+                            (hasWriteFlow(id) ? summary?.kind === "own" : true);
                         const statusText =
                             state.kind === "desktop" && row?.state === "found"
                                 ? (reported?.version ??
@@ -751,7 +769,7 @@ export function AgentList({
                                                 >
                                                     {t("agents.summary.none")}
                                                 </span>
-                                            ) : hasConfigAdapter(id) &&
+                                            ) : hasWriteFlow(id) &&
                                               summary !== undefined ? (
                                                 <span
                                                     className={
@@ -791,7 +809,7 @@ export function AgentList({
                                         styles["rowActions"],
                                     ].join(" ")}
                                 >
-                                    {hasConfigAdapter(id) ? (
+                                    {hasWriteFlow(id) ? (
                                         <IconButton
                                             icon="edit"
                                             blocked={
@@ -844,7 +862,7 @@ export function AgentList({
                 ? row?.source !== "manual"
                 : pathValue.trim() === row?.entryPath;
         const configurable = hasConfigAdapter(id);
-        const segments: AgentSegment[] = configurable
+        const segments: AgentSegment[] = hasWriteFlow(id)
             ? ["history", "skill", "mcp", "install"]
             : ["skill", "mcp", "install"];
 
@@ -933,6 +951,24 @@ export function AgentList({
                             />
                         </div>
                     )}
+                    {id === "codex" && (
+                        <div
+                            role="tabpanel"
+                            id={`agent-panel-${id}-history`}
+                            aria-labelledby={`agent-segment-${id}-history`}
+                            hidden={segment !== "history"}
+                        >
+                            <CodexSettingsPanel
+                                key={configEpoch}
+                                mode="manage"
+                                blocked={blocked}
+                                onBusyChange={(busy) => {
+                                    pending.current = busy;
+                                    if (mounted.current) setVersionBusy(busy);
+                                }}
+                            />
+                        </div>
+                    )}
                     <div
                         role="tabpanel"
                         id={`agent-panel-${id}-skill`}
@@ -941,8 +977,13 @@ export function AgentList({
                     >
                         <AgentSkillPanel
                             agentId={id}
+                            hidden={hidden || segment !== "skill"}
                             onOpenSkills={() => {
                                 onOpenSkills?.();
+                            }}
+                            onBusyChange={(busy) => {
+                                pending.current = busy;
+                                if (mounted.current) setVersionBusy(busy);
                             }}
                         />
                     </div>
@@ -1045,8 +1086,10 @@ export function AgentList({
         );
     }
 
+    const codexSummary = listSummaries.codex;
+    const codexOurs = codexSummary?.kind === "ours" ? codexSummary : null;
     const writeRow =
-        writeTarget === null
+        writeTarget === null || writeTarget === "codex"
             ? null
             : (() => {
                   const summary = listSummaries[writeTarget];
@@ -1066,6 +1109,28 @@ export function AgentList({
             data-secondary-page={page.kind !== "list" ? true : undefined}
         >
             {page.kind === "list" ? listView() : detailView(page.id)}
+            {writeTarget === "codex" && (
+                <CodexWriteDialog
+                    providerLabel={codexOurs?.providerLabel ?? null}
+                    modelLabel={codexOurs?.modelLabel ?? null}
+                    blocked={blocked}
+                    onBusyChange={(busy) => {
+                        pending.current = busy;
+                        if (mounted.current) setVersionBusy(busy);
+                    }}
+                    onApplied={() => {
+                        // Keep the dialog open: a deploy may be followed by
+                        // its set-default review, and the outcome shows here.
+                        setConfigEpoch((value) => value + 1);
+                    }}
+                    onClose={closeWrite}
+                    returnFocus={() =>
+                        writeReturnFocus.current?.isConnected
+                            ? writeReturnFocus.current
+                            : null
+                    }
+                />
+            )}
             {writeRow !== null && (
                 <WriteConfigDialog
                     agent={writeRow.agent}

@@ -763,6 +763,15 @@ describe("model IPC boundary", () => {
                     clearable: true,
                 },
             ],
+            codexReferences: [
+                {
+                    configRoot: "/home/test/.codex",
+                    providerKey: "vibemate-mistral",
+                    modelId: "mistral/mistral-large-4",
+                    binding: "default",
+                    state: "active",
+                },
+            ],
             rememberedPreferences: 0,
             canDelete: false,
         };
@@ -783,6 +792,25 @@ describe("model IPC boundary", () => {
             { ...impact, rememberedPreferences: -1 },
             { ...impact, canDelete: "yes" },
             { ...impact, extra: null },
+            { ...impact, codexReferences: undefined },
+            { ...impact, references: [], canDelete: true },
+            // A model impact only ever lists the owned default of this model.
+            {
+                ...impact,
+                codexReferences: [
+                    { ...impact.codexReferences[0], modelId: "other" },
+                ],
+            },
+            {
+                ...impact,
+                codexReferences: [
+                    {
+                        ...impact.codexReferences[0],
+                        binding: "provider",
+                        modelId: null,
+                    },
+                ],
+            },
         ]) {
             vi.mocked(invoke).mockResolvedValueOnce(response);
             await expect(

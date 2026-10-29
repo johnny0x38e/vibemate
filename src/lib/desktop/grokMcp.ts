@@ -119,21 +119,34 @@ const previewSchema = z.strictObject({
 });
 /** Exact, sanitized entry plan. Approval is rechecked in Rust before any write. */
 export type GrokMcpPlan = z.infer<typeof previewSchema>;
+/** Ownership metadata; the entry digest stays in Rust (it hashes secrets). */
 const ownership = z.strictObject({
     serverName,
     definitionRevision: revision,
-    entryDigest: digest,
     generation: id,
     enabled: z.boolean(),
 });
-const deployment = z.strictObject({
-    definitionId: id,
-    displayName: z.string().min(1).max(64),
-    configRoot: path,
-    ownership,
-    state: z.enum(["written", "modified", "missing", "unreadable"]),
-});
-/** Registration metadata and observed disk state, never a connection status. */
+const deployment = z
+    .strictObject({
+        definitionId: id,
+        displayName: z.string().min(1).max(64),
+        configRoot: path,
+        ownership,
+        state: z.enum(["written", "modified", "missing", "unreadable"]),
+        unmanagedKeys: z.array(z.string().min(1).max(128)).max(64),
+    })
+    .refine(
+        (value) =>
+            value.state === "modified" || value.unmanagedKeys.length === 0,
+    );
+/**
+ * Registration metadata and observed disk state, never a connection status.
+ *
+ * `unmanagedKeys` lists keys added to the entry by hand that vibemate does not
+ * manage (names only, never values). They make the row `modified`; every
+ * action is then refused with `ownership_conflict`, because rewriting the
+ * table would drop them. Same rule as Codex.
+ */
 export type GrokMcpDeployment = z.infer<typeof deployment>;
 const recovery = z
     .strictObject({

@@ -1,10 +1,11 @@
-//! Thin Pi, Grok and Claude Code MCP lifecycle IPC. Rust chooses every native/backup path;
+//! Thin Pi, Grok, Claude Code and Codex MCP lifecycle IPC. Rust chooses every native/backup path;
 //! React sends identities, actions and approvals only. No server execution API.
 
 use crate::{
     agents::DiscoveryEnvironment,
     config_apply::BackupStore,
     mcp::claude_deployment as claude,
+    mcp::codex_deployment as codex,
     mcp::grok_deployment as grok,
     mcp::pi_deployment as deploy,
     storage::{Storage, StorageStatus},
@@ -345,4 +346,117 @@ pub(crate) async fn recover_claude_mcp_change(
     })
     .await
     .map_err(|_| claude::Error::OutcomeUnknown)?
+}
+
+fn codex_context(
+    app: &tauri::AppHandle,
+) -> Result<(DiscoveryEnvironment, BackupStore), codex::Error> {
+    let environment =
+        super::agents::environment(app).map_err(|_| codex::Error::TargetUnavailable)?;
+    let backups = app
+        .path()
+        .app_data_dir()
+        .map_err(|_| codex::Error::StorageUnavailable)?
+        .join("backups");
+    Ok((environment, BackupStore::new(backups)))
+}
+fn with_codex_storage<T>(
+    app: &tauri::AppHandle,
+    operation: impl FnOnce(&Storage) -> Result<T, codex::Error>,
+) -> Result<T, codex::Error> {
+    let status = app
+        .try_state::<StorageStatus>()
+        .ok_or(codex::Error::StorageUnavailable)?;
+    let storage = status
+        .storage()
+        .map_err(|_| codex::Error::StorageUnavailable)?;
+    operation(storage)
+}
+
+/// Read Codex root-scoped registrations and a pending recovery observation.
+#[tauri::command]
+pub(crate) async fn codex_mcp_state(
+    app: tauri::AppHandle,
+    request: codex::StateRequest,
+) -> Result<codex::State, codex::Error> {
+    let (environment, backups) = codex_context(&app)?;
+    tauri::async_runtime::spawn_blocking(move || {
+        with_codex_storage(&app, |storage| {
+            codex::read_state(storage, &environment, &request, &backups)
+        })
+    })
+    .await
+    .map_err(|_| codex::Error::OutcomeUnknown)?
+}
+
+/// Read a bounded page of one definition's retained Codex entry results.
+#[tauri::command]
+pub(crate) async fn codex_mcp_history(
+    app: tauri::AppHandle,
+    request: codex::HistoryRequest,
+) -> Result<codex::HistoryPage, codex::Error> {
+    let (environment, _) = codex_context(&app)?;
+    tauri::async_runtime::spawn_blocking(move || {
+        with_codex_storage(&app, |storage| {
+            codex::history(storage, &environment, &request)
+        })
+    })
+    .await
+    .map_err(|_| codex::Error::OutcomeUnknown)?
+}
+
+/// Rebuild one Codex native action and return only its masked summary and approval.
+#[tauri::command]
+pub(crate) async fn preview_codex_mcp_change(
+    app: tauri::AppHandle,
+    selection: codex::Selection,
+) -> Result<codex::Preview, codex::Error> {
+    let (environment, backups) = codex_context(&app)?;
+    tauri::async_runtime::spawn_blocking(move || {
+        with_codex_storage(&app, |storage| {
+            codex::preview(storage, &environment, &selection, &backups)
+        })
+    })
+    .await
+    .map_err(|_| codex::Error::OutcomeUnknown)?
+}
+
+/// Confirm an exact Codex preview; only deploy/update opens current OS credentials.
+#[tauri::command]
+pub(crate) async fn apply_codex_mcp_change(
+    app: tauri::AppHandle,
+    request: codex::ApplyRequest,
+) -> Result<codex::Applied, codex::Error> {
+    let (environment, backups) = codex_context(&app)?;
+    tauri::async_runtime::spawn_blocking(move || {
+        super::state::with_credential_lock(&app, codex::Error::OutcomeUnknown, || {
+            with_codex_storage(&app, |storage| {
+                codex::apply(
+                    storage,
+                    &crate::credentials::OsCredentialStore,
+                    &environment,
+                    &request,
+                    &backups,
+                )
+            })
+        })
+    })
+    .await
+    .map_err(|_| codex::Error::OutcomeUnknown)?
+}
+
+/// Explicitly reconcile an interrupted Codex before/intended observation.
+#[tauri::command]
+pub(crate) async fn recover_codex_mcp_change(
+    app: tauri::AppHandle,
+    request: codex::RecoveryRequest,
+) -> Result<codex::Applied, codex::Error> {
+    let (environment, backups) = codex_context(&app)?;
+    tauri::async_runtime::spawn_blocking(move || {
+        with_codex_storage(&app, |storage| {
+            codex::recover(storage, &environment, &request, &backups)
+        })
+    })
+    .await
+    .map_err(|_| codex::Error::OutcomeUnknown)?
 }

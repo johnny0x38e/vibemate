@@ -14,6 +14,7 @@ pub use grok_preview::{
     GrokMcpPreview, GrokMcpPreviewError, PreviewGrokMcpRequest, preview_grok_registration,
 };
 pub mod claude_deployment;
+pub mod codex_deployment;
 pub mod grok_deployment;
 pub mod pi_deployment;
 mod pi_preflight;
@@ -24,6 +25,7 @@ pub use pi_preview::{
 };
 mod repository;
 mod service;
+mod unmanaged_keys;
 pub use repository::{get_definition, list_definitions};
 pub use service::{
     cleanup_credentials, cleanup_deleted_credentials, delete_definition, save_definition,

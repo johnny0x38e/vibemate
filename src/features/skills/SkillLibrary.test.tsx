@@ -22,6 +22,7 @@ import {
     installMarketplaceSkill,
     installSkill,
     listMarketplaceSkills,
+    listAgentSkillDeployments,
     listSkillDeployments,
     listSkillDeployRecoveries,
     listSkills,
@@ -61,6 +62,7 @@ vi.mock(import("../../lib/desktop/skills"), async (importOriginal) => ({
     cleanupDeletedSkillCopies: vi.fn(),
     previewSkillDeploy: vi.fn(),
     listSkillDeployments: vi.fn(),
+    listAgentSkillDeployments: vi.fn(),
     listSkillDeployRecoveries: vi.fn(),
 }));
 const list = vi.mocked(listSkills);
@@ -79,6 +81,7 @@ const remove = vi.mocked(deleteSkill);
 const removeCopies = vi.mocked(cleanupDeletedSkillCopies);
 const previewDeploy = vi.mocked(previewSkillDeploy);
 const listDeployments = vi.mocked(listSkillDeployments);
+const listAgentDeployments = vi.mocked(listAgentSkillDeployments);
 const listRecoveries = vi.mocked(listSkillDeployRecoveries);
 
 const ID = "0123456789abcdef0123456789abcdef";
@@ -256,6 +259,8 @@ beforeEach(() => {
     listDeployments
         .mockReset()
         .mockResolvedValue({ kind: "desktop", items: [] });
+    // Browser preview by default: the list hides its injected-Agent chips.
+    listAgentDeployments.mockReset().mockResolvedValue({ kind: "preview" });
     listRecoveries
         .mockReset()
         .mockResolvedValue({ kind: "desktop", items: [] });
@@ -310,11 +315,11 @@ test("the detail page shows the imported facts", async () => {
     expect(screen.getByText("Imported from")).toBeDefined();
     expect(screen.getByText("Last change")).toBeDefined();
     expect(
-        await screen.findByText("Deploying a skill needs the desktop app."),
+        await screen.findByText("Injecting a skill needs the desktop app."),
     ).toBeDefined();
 });
 
-test("the deploy panel offers Claude Code and previews its own target", async () => {
+test("the detail page injects into each Agent from its own row", async () => {
     previewDeploy.mockImplementation((agentId) =>
         Promise.resolve({
             kind: "desktop" as const,
@@ -324,14 +329,8 @@ test("the deploy panel offers Claude Code and previews its own target", async ()
                 skillName: row.name,
                 skillRevision: row.revision,
                 contentDigest: row.contentDigest,
-                configRoot:
-                    agentId === "claudeCode"
-                        ? "/home/test/.claude"
-                        : "/home/test/pi",
-                targetPath:
-                    agentId === "claudeCode"
-                        ? "/home/test/.claude/skills/demo-skill"
-                        : "/home/test/pi/skills/demo-skill",
+                configRoot: `/home/test/${agentId}`,
+                targetPath: `/home/test/${agentId}/skills/demo-skill`,
                 targetName: row.name,
                 targetState: "absent" as const,
                 symlinkAvailable: true,
@@ -347,16 +346,81 @@ test("the deploy panel offers Claude Code and previews its own target", async ()
             name: "Open details for demo-skill",
         }),
     );
-    const agent = await screen.findByRole("combobox", { name: "Agent" });
-    expect(
-        await screen.findByText("/home/test/pi/skills/demo-skill"),
-    ).toBeDefined();
+    const rows = await screen.findByRole("list", { name: "Agents" });
+    for (const agent of ["Claude Code", "Pi", "Grok Build"]) {
+        const agentRow = within(rows).getByRole("listitem", {
+            name: `${agent} · demo-skill`,
+        });
+        expect(await within(agentRow).findByText("Not injected")).toBeDefined();
+        expect(
+            within(agentRow).getByRole("button", {
+                name: `Inject demo-skill into ${agent}`,
+            }),
+        ).toBeDefined();
+    }
+    // The old Agent dropdown is gone; every Agent is previewed directly.
+    expect(screen.queryByRole("combobox", { name: "Agent" })).toBeNull();
+    expect(previewDeploy).toHaveBeenCalledWith("claudeCode", ID);
+    expect(previewDeploy).toHaveBeenCalledWith("pi", ID);
+    expect(previewDeploy).toHaveBeenCalledWith("grokBuild", ID);
+});
 
-    await setFieldSelectValue(agent, "claudeCode");
+test("each list row states how many Agents the skill is injected into", async () => {
+    const other: SkillRecord = { ...row, id: "e".repeat(32), name: "other" };
+    list.mockResolvedValue(page([row, other]));
+    const record = (agentId: "pi" | "claudeCode") => ({
+        skillId: ID,
+        skillName: row.name,
+        agentId,
+        configRoot: `/home/test/${agentId}`,
+        mode: "symlink" as const,
+        skillRevision: 1,
+        contentDigest: row.contentDigest,
+        inSync: agentId === "pi",
+        deployedAtMs: 1,
+    });
+    listAgentDeployments.mockImplementation((agentId) =>
+        Promise.resolve({
+            kind: "desktop" as const,
+            items:
+                agentId === "grokBuild"
+                    ? []
+                    : [record(agentId === "pi" ? "pi" : "claudeCode")],
+        }),
+    );
+    await setup();
+    const rows = await screen.findByRole("list", { name: "Imported skills" });
+    const demo = within(rows)
+        .getByRole("heading", { name: "demo-skill" })
+        .closest("li");
+    const second = within(rows)
+        .getByRole("heading", { name: "other" })
+        .closest("li");
+    if (!(demo instanceof HTMLElement) || !(second instanceof HTMLElement))
+        throw new Error("missing rows");
+    // An out-of-sync placement still counts as injected.
     expect(
-        await screen.findByText("/home/test/.claude/skills/demo-skill"),
+        await within(demo).findByText("Injected into 2 agents"),
     ).toBeDefined();
-    expect(previewDeploy).toHaveBeenLastCalledWith("claudeCode", ID);
+    expect(within(second).getByText("Not injected")).toBeDefined();
+    expect(listAgentDeployments).toHaveBeenCalledWith("claudeCode");
+    expect(listAgentDeployments).toHaveBeenCalledWith("pi");
+    expect(listAgentDeployments).toHaveBeenCalledWith("grokBuild");
+});
+
+test("a failed count read hides the chips instead of guessing", async () => {
+    listAgentDeployments.mockRejectedValue(
+        new SkillRequestError("storage_unavailable"),
+    );
+    await setup();
+    expect(
+        await screen.findByRole("heading", { name: "demo-skill" }),
+    ).toBeDefined();
+    await waitFor(() => {
+        expect(listAgentDeployments).toHaveBeenCalled();
+    });
+    expect(screen.queryByText("Not injected")).toBeNull();
+    expect(screen.queryByText(/Injected into/u)).toBeNull();
 });
 
 test("a large skill reports its size in megabytes", async () => {
@@ -658,11 +722,7 @@ test("a deployed skill lists its references and opens the detail page", async ()
     fireEvent.click(
         await screen.findByRole("button", { name: "Delete “demo-skill”" }),
     );
-    expect(
-        await screen.findByText(
-            "Claude Code · Symbolic link · revision 1 · in sync",
-        ),
-    ).toBeDefined();
+    expect(await screen.findByText("Claude Code · Injected")).toBeDefined();
     expect(
         screen
             .getByRole("button", { name: "Delete" })

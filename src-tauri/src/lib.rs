@@ -7,6 +7,7 @@ pub mod config_apply;
 pub mod config_plan;
 mod configuration_preview;
 pub mod credentials;
+mod instance_lock;
 mod log_access;
 mod logging;
 pub mod mcp;
@@ -19,6 +20,7 @@ pub mod model_search;
 pub mod models;
 pub mod providers;
 pub mod references;
+mod secret_text;
 pub mod settings;
 mod shared;
 pub mod skills;
@@ -42,6 +44,25 @@ pub fn run() {
                 app.path().app_log_dir().ok(),
                 file_logging_active,
             ));
+            // One running instance per app-data folder. A second launch exits
+            // before it opens the database or touches any Agent folder; the
+            // lock file stays open (and locked) for this process's lifetime.
+            let instance = match app.path().app_data_dir() {
+                Ok(data_directory) => instance_lock::acquire(&data_directory),
+                Err(_) => instance_lock::InstanceLock::Unavailable,
+            };
+            match &instance {
+                instance_lock::InstanceLock::HeldElsewhere => {
+                    log::info!(target: "vibemate", "event=already_running action=exit");
+                    std::process::exit(0);
+                }
+                instance_lock::InstanceLock::Unavailable => {
+                    log::warn!(target: "vibemate", "event=instance_lock_unavailable");
+                }
+                instance_lock::InstanceLock::Exclusive { .. } => {}
+            }
+            let exclusive = instance.is_exclusive();
+            app.manage(instance);
             // The database lives in the platform app-data folder, never in the project.
             let status = match app.path().app_data_dir() {
                 Ok(data_directory) => {
@@ -73,6 +94,13 @@ pub fn run() {
             }
             // Managed state is shared by all commands; `StorageStatus` is safe across threads.
             app.manage(status);
+            // Takes the deploy lock here, before any command can run, and
+            // sweeps on a background thread: startup never waits on a slow
+            // Agent volume, and deploy commands wait for the sweep instead.
+            // Skipped unless this process is known to be the only instance.
+            if exclusive {
+                commands::skills::start_skill_deploy_sweep(app.handle());
+            }
             app.manage(commands::CredentialLock::default());
             app.manage(model_fetch::ModelFetchRegistry::new());
             app.manage(agents::VersionProbeGate::default());
@@ -120,6 +148,16 @@ pub fn run() {
             commands::mcp_deploy::preview_claude_mcp_change,
             commands::mcp_deploy::apply_claude_mcp_change,
             commands::mcp_deploy::recover_claude_mcp_change,
+            commands::mcp_deploy::codex_mcp_state,
+            commands::mcp_deploy::codex_mcp_history,
+            commands::mcp_deploy::preview_codex_mcp_change,
+            commands::mcp_deploy::apply_codex_mcp_change,
+            commands::mcp_deploy::recover_codex_mcp_change,
+            commands::codex::codex_settings_state,
+            commands::codex::codex_settings_history,
+            commands::codex::preview_codex_settings_change,
+            commands::codex::apply_codex_settings_change,
+            commands::codex::recover_codex_settings_change,
             commands::mcp::preview_pi_mcp_registration,
             commands::mcp::preview_grok_mcp_registration,
             commands::mcp::list_mcp_definitions,
@@ -147,6 +185,8 @@ pub fn run() {
             commands::skills::cleanup_deleted_skill_copies,
             commands::skills::preview_skill_deploy,
             commands::skills::apply_skill_deploy,
+            commands::skills::resync_skill_deploy,
+            commands::skills::preview_agent_skill_targets,
             commands::skills::disable_skill_deploy,
             commands::skills::list_agent_skill_deployments,
             commands::skills::list_skill_deployments,

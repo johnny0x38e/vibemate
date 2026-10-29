@@ -4,8 +4,9 @@
 library. Installing from a confirmed GitHub source, browsing/installing from the
 skills.sh marketplace at Git `HEAD`, a lightweight Git revision check via
 `ls-remote`, previewing and applying an update from a recorded Git or npx fetch
-method, and deploying a library Skill into Claude Code, Pi or Grok Build
-user-level `skills/` directories are implemented. See
+method, and injecting a library Skill into Claude Code, Pi, Grok Build or Codex
+user-level `skills/` directories (with resync of drifted placements) are
+implemented. See
 [`plans/todo.md`](plans/todo.md) and the
 [marketplace reference](plans/skills-marketplace-reference.md).
 
@@ -24,8 +25,10 @@ user-level `skills/` directories are implemented. See
 - Preview an update for a skill that has a recorded Git or npx fetch method:
   re-acquire into a temporary workspace, compare digests and path lists, and name
   keep/replace strategies without writing the library or Agent targets.
-- Deploy a library Skill into Claude Code, Pi or Grok Build as a symlink when
-  possible, or as an explicit copy-sync; revoke only vibemate-owned targets.
+- Inject a library Skill into Claude Code, Pi, Grok Build or Codex as a symlink
+  when possible, or as a copy-sync; resync a drifted owned placement; remove
+  only vibemate-owned targets. Injection is user-level only; project directories
+  are never written.
 - Delete a library entry with a bilingual confirmation; deletion refuses while
   any deployment row remains.
 
@@ -35,7 +38,8 @@ Migration v10 created `skill`; v11 rebuilt it to widen the content limits; v27
 added the fetch method and installer fields; v28–v29 added `skill_deployment`
 for per-Agent ownership; v30 added revision-check columns; v31 added Claude Code
 as a deployment target; v34 added `skill_deploy_operation` for unfinished
-apply/disable recovery. Files live in
+apply/disable recovery; v36 added Codex as a deployment and journal target.
+Files live in
 `<app-data>/skills/<id>/`. Managed copies move with the database, so a backup of
 the app-data folder stays complete.
 
@@ -244,7 +248,7 @@ opens the detail page and revokes the deployments (and finishes or dismisses any
 journal row). This is the Skill-specific reference view; MCP references remain
 with P32/P33.
 
-## Deploy to Claude Code, Pi and Grok Build
+## Deploy to agents
 
 Deployment writes only each Agent's user-level skills directory, resolved the
 same way as model configuration:
@@ -254,35 +258,137 @@ same way as model configuration:
 | Claude Code | `CLAUDE_CONFIG_DIR`, else `~/.claude`     | `<root>/skills/<skill-name>/` |
 | Pi          | `PI_CODING_AGENT_DIR`, else `~/.pi/agent` | `<root>/skills/<skill-name>/` |
 | Grok Build  | `GROK_HOME`, else `~/.grok`               | `<root>/skills/<skill-name>/` |
+| Codex       | `CODEX_HOME`, else `~/.codex`             | `<root>/skills/<skill-name>/` |
 
-All three Agents use the same `SKILL.md` directory form. Shared locations such
+All four Agents use the same `SKILL.md` directory form. Shared locations such
 as `~/.agents/skills/` and project-local discovery paths are not written.
 Claude Code's personal skills directory follows its configuration root; the
 installed 2.1.308 binary resolves `<CLAUDE_CONFIG_DIR|~/.claude>/skills`, and
 the official Skill contract allows a `<name>` entry to be a symbolic link.
+Codex 0.165.0 still loads `$CODEX_HOME/skills` (marked deprecated in its source)
+as well as `~/.agents/skills`; when `~/.agents/skills/<name>` already exists the
+Codex preview returns `sharedDuplicatePath` and the row warns that Codex lists
+both same-named skills separately. The warning does not block injection. See
+the [Codex contract](integrations/codex.md#skill-配置).
 
-1. **Preview** names the Agent, classifies the target as absent, vibemate-owned
-   symlink, owned copy, or foreign; probes whether a directory symlink can be
-   created under `skills/`; and suggests symlink when available, otherwise copy.
+1. **Preview** names the Agent and classifies the target as absent,
+   vibemate-owned symlink, owned copy, or foreign, and suggests symlink when
+   available, otherwise copy. Preview is read-only: it never creates the
+   Agent's `skills/` directory (a missing directory is reported as `absent`).
+   The symlink availability shown in previews comes from one process-wide
+   pre-check in a fresh directory under the system temporary directory; that
+   directory is removed on every exit path, including early returns and panics.
+   Directories under the Agent root are created only by apply or resync, which
+   probe again in place with a `probe-<id>` link in the staging folder (see
+   **Staging, backups and cleanup**) and unlink it afterwards. A copy whose
+   content cannot be read (an unreadable folder or `SKILL.md`, or one that
+   changed while it was read) is `read_failed`, not `foreign`; a copy whose
+   `SKILL.md` was deleted still counts as `foreign`.
 2. **Apply** requires the reviewed Agent, skill revision, config root, mode and
    target state. Symlink mode is refused when the probe fails. Foreign targets
-   are never overwritten. After a successful filesystem write, schema v31 records
-   ownership (`agent_id` is `pi`, `grokBuild` or `claudeCode`, plus mode, skill
-   revision and content digest). A failed record attempt rolls back the
+   are never overwritten. After a successful filesystem write, the ownership row
+   records `agent_id` (`pi`, `grokBuild`, `claudeCode` or `codex`), mode, skill
+   revision and content digest. A failed record attempt rolls back the
    filesystem write when possible, otherwise `outcome_unknown`. One skill may be
    deployed to each Agent independently; revoking one does not touch the others.
-3. **Disable** removes only a still-owned symlink or copy. If the user replaced
-   the target, the path is left alone and the ownership row is cleared.
-4. **Recovery** journals each apply/disable as `prepared` before the first
-   filesystem change and clears the row when ownership and the target agree. A
-   write that cannot be rolled back is marked `unknown`. The Skills list shows
-   unfinished rows with a live classification and Finish/Dismiss actions; Finish
-   repairs ownership only and never replays a filesystem write. Design details
-   live in [skill-recovery](plans/skill-recovery.md).
+3. **Disable** (Remove) removes only a still-owned symlink or copy. If the user
+   replaced or edited the target, the path is left alone and the ownership row
+   is cleared. An unreadable copy returns `read_failed` before any journal row
+   is written, so the ownership row and the files stay as they are.
+4. **Resync** (`resync_skill_deploy`) works only while the ownership row exists.
+   It accepts drift: an owned copy that was edited but is still a real
+   directory, or an owned link that now points elsewhere; a target that was
+   deleted is recreated. Any other occupant is `target_conflict`. The mode
+   keeps the recorded one, except that a link becomes a copy when symlinks are unavailable or the copy preference is set.
+   Steps: prepare the staging folder (which sweeps leftovers first); journal an
+   `apply` row; when the target is `foreign` (an edited copy or a retargeted
+   link), back it up to
+   `<app-data>/skill-deploy-backups/<agent>/<skill-id>/<ms>-<operation>/<name>`
+   (bounded to 10,000 entries, 256 MiB and depth 32; a larger tree is refused
+   rather than lost; links are recorded in `link-target.txt`, skipped entries in
+   `skipped-entries.txt`); stage the new placement as `stage-<operation>`;
+   re-classify, so an edit made after the review or during the backup is
+   reported as `target_changed`; move the old target aside as
+   `aside-<operation>`; rename the staged placement into place; record
+   ownership; delete the aside entry and drop the staging folder when empty;
+   keep only the newest 5 backups for that Agent and skill. A failure before
+   ownership is recorded restores the old target when it can, otherwise
+   `outcome_unknown`. A deleted target is recreated without a backup; an
+   unreadable copy returns `read_failed` and nothing is written.
+5. **Recovery** journals each apply/disable/resync as `prepared` before the
+   first filesystem change and clears the row when ownership and the target
+   agree. A write that cannot be rolled back is marked `unknown`. The Skills
+   list shows unfinished rows with a live classification and Finish/Dismiss
+   actions; Finish repairs ownership only and never replays a filesystem write.
+   Design details live in [skill-recovery](plans/skill-recovery.md).
 
-The Skill detail page owns the deploy controls and an Agent selector. The Agent
-detail Skill segment for Claude Code, Pi and Grok Build is read-only: it lists
-deployments for that agent directory and jumps to the Skills module.
+**Staging, backups and cleanup.**
+
+- Every temporary entry lives in `.vibemate-staging`, a sibling of the
+  _resolved_ `skills/` directory: when `skills/` is a link, the staging folder
+  sits next to its destination, so the final `rename` stays on one filesystem.
+  It is outside `skills/`, so an Agent never sees half-written copies, aside
+  copies or probes. Names: `stage-<operation>` and `aside-<operation>`
+  (resync), `deploy-<operation>` (apply copy), `refresh-<id>` (copy refresh
+  after a library update) and `probe-<id>` (in-place symlink probe). A link
+  planted at the staging name is refused (`write_failed`).
+- Permissions (Unix): a newly created staging folder is 0700. Every backup
+  folder level (`skill-deploy-backups`, `<agent>`, `<skill-id>`,
+  `<ms>-<operation>` and folders inside a backup) is 0700, and backup files and
+  notes are 0600; an existing backup level from an earlier build (for example 0755) is tightened, and a link at any level is refused. Copies placed into
+  `skills/` keep the library files' modes. Other platforms use default
+  permissions.
+- Sweep rules, shared by the startup sweep and the sweep before each apply,
+  resync and copy refresh: in the staging folder (and the Agent-root
+  `.vibemate-staging` of earlier builds), `stage-`, `aside-` and `deploy-`
+  entries are removed only when their ID is a journal ID with no journal row
+  left (an operation awaiting recovery keeps its entry, and a journal read
+  error keeps it too); `refresh-` entries only once older than one hour;
+  `probe-` entries only when they are links (unlinked, never followed). Inside
+  `skills/`, the names of earlier builds are removed: `.vibemate-resync-<id>`
+  without a journal row, `.vibemate-deploy-<skill id>`, and
+  `.vibemate-symlink-probe` when it is a link. An empty staging folder that is
+  a real directory is removed; a link or junction at the staging name is left
+  alone. Anything else, including user files with similar names, is never
+  touched, and filesystem errors are ignored.
+- **Startup sweep:** once per launch, only in the instance that holds the
+  app-data instance lock, on a background thread started during setup. It
+  covers every resolvable Agent root plus the roots recorded in ownership and
+  journal rows, creates nothing, and logs a failure by variant name only. The
+  window does not wait for it; deploy-type commands do.
+- **Single instance:** at startup vibemate takes an exclusive OS lock on
+  `<app-data>/vibemate.lock` (0600 on Unix, `File::try_lock`) and holds it for
+  the process lifetime; the OS releases it on exit or crash, so it never goes
+  stale. A second launch exits cleanly before opening the database or touching
+  any Agent folder; it does not focus the first window. When the lock cannot be
+  taken at all (no app-data folder, or a filesystem without locking), the app
+  runs normally but skips the startup sweep.
+- **Deploy lock:** one process-wide lock serializes apply, resync, disable,
+  recovery Finish/Dismiss, the copy refresh after a library update and the
+  sweep. Previews, the batch preview and lists never take it. A command waits
+  at most 120 seconds, then fails with `operation_failed`.
+- **`read_failed`:** from preview, resync and remove it means the injected
+  copy in the Agent folder could not be read, and the row shows **Can't read
+  the injected copy in the Agent folder. Check the folder's permissions, then
+  try again.** The interface picks the message by command: from inject and
+  from library commands, `read_failed` is shown as **The skill library could
+  not be read.**
+
+**Batch preview.** `preview_agent_skill_targets(agent)` classifies every library
+skill for one Agent in pages of 100 without writing anything. It returns the
+skill ID, target state, target path and symlink availability. A target that
+cannot be read is reported as `unreadable` (not folded into `foreign`) instead
+of failing the batch, and
+Codex rows also carry `sharedDuplicatePath` for a same-named
+`~/.agents/skills/<name>` entry, like the per-skill preview.
+
+Inject controls appear in two places with the same rows and actions. The Skill
+detail page shows one row per Agent for that skill. The Agent detail Skill
+segment (Claude Code, Pi, Grok Build and Codex) shows one row per library skill
+for that Agent, with Inject, Remove and Resync and the same Advanced link
+choice. It reads one library page at a time, one bulk deployment list and one
+batch target classification, and loads a full preview only where a row's
+status or action needs it.
 
 ## Interface
 
@@ -306,9 +412,24 @@ deployments for that agent directory and jumps to the Skills module.
   start from the latest revision.
 - Digests stay out of the interface: they are a machine comparison value and a
   baseline for the future update comparison.
-- The detail page includes a **Deploy to an agent** card: Agent and mode choice,
-  target path and status, apply, current deployments and remove. Browser preview
-  reports that deploy needs the desktop app.
+- The detail page includes an **Agent injection** panel with one row per Agent
+  (Claude Code, Pi, Grok Build, Codex). Each row shows one status — **Not
+  injected**, **Injected**, **Needs sync** or **Occupied** (plus checking/not
+  checked) — and one primary action: Inject, Remove, Resync or none. An edited
+  placement also offers a secondary Remove. Details show the location and
+  method (linked to the library or copied files). Browser preview reports that
+  injection needs the desktop app.
+- The link method is automatic; the only override is the collapsed **Advanced**
+  disclosure with **Automatic (link when possible)** or **Always copy files**.
+- Remove asks for confirmation. If the files were edited outside vibemate, the
+  dialog says they stay in place and vibemate only stops managing them.
+- Resync always asks for confirmation. When it would overwrite edited files,
+  the dialog says so, names the target path and the backup folder
+  (`<app-data>/skill-deploy-backups/<agent>/<skill-id>`), and the confirm button
+  reads **Back up and overwrite**. After success a status notice shows the
+  exact backup path. An unreadable target shows **Can't read target** and
+  disables Inject and Resync until it can be read.
+- Library rows show **Injected into N agents** or **Not injected**.
 - The Skills list shows an **Unfinished skill deployments** panel when journal
   rows remain: Finish repairs ownership, Dismiss clears the journal without
   rewriting Agent files, and the panel stays hidden when nothing is pending.
@@ -320,9 +441,12 @@ links and limits, the untouched source directory, deterministic digests, folder
 discovery and batch reporting, large bodies and headers, the IPC contract, Git
 and npx request validation, acquired-tree discovery, partial imports, workspace
 cleanup, source-method edits, the v27 fields, and deploy preview/apply/disable
-for Claude Code, Pi and Grok Build (symlink, copy, config-root override, foreign
+for Claude Code, Pi, Grok Build and Codex (symlink, copy, config-root override, foreign
 conflict, stale tokens, cross-Agent isolation, delete-while-deployed,
-interrupted-journal Finish/Dismiss and delete-while-journaled). Storage tests
+interrupted-journal Finish/Dismiss and delete-while-journaled), the Codex
+`~/.agents/skills` duplicate report, resync (edited copy with backup,
+retargeted link, deleted target and mode switch, missing ownership, stale
+review, different-kind occupant) and the batch target classification. Storage tests
 cover the skill migrations, preserved deployment rows, the `claudeCode` target
 value and the v34 `skill_deploy_operation` table.
 

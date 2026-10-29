@@ -162,6 +162,25 @@ pub(super) fn list_deployments_for_root(
     Ok(rows)
 }
 
+/// Every configuration root named by an ownership row or a journal row.
+pub(super) fn list_config_roots(storage: &Storage) -> Result<Vec<String>, SkillError> {
+    let connection = lock(storage)?;
+    let mut statement = connection
+        .prepare(
+            "SELECT config_root FROM skill_deployment
+             UNION
+             SELECT config_root FROM skill_deploy_operation
+             ORDER BY 1",
+        )
+        .map_err(|_| SkillError::ReadFailed)?;
+    let rows = statement
+        .query_map([], |row| row.get(0))
+        .map_err(|_| SkillError::ReadFailed)?
+        .collect::<Result<Vec<String>, _>>()
+        .map_err(|_| SkillError::ReadFailed)?;
+    Ok(rows)
+}
+
 /// Every deployment recorded for one central skill.
 pub(super) fn list_deployments_for_skill(
     storage: &Storage,

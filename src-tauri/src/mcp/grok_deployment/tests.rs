@@ -545,3 +545,217 @@ fn dynamic_secret_values_are_refused_without_writing() {
     );
     assert!(!f.root.join("config.toml").exists());
 }
+
+#[test]
+fn previews_mask_url_query_and_argument_credentials() {
+    let placeholder = crate::config_plan::SECRET_PLACEHOLDER;
+    let entry = serde_json::json!({
+        "command": "npx",
+        "args": ["-y", "tool", "--api-key", "sk-arg", "--token=tok-arg", "Authorization: Bearer b-arg"],
+        "url": "https://mcp.example/sse?api_key=sk-url&region=eu",
+        "env": {"API_TOKEN": "sk-env", "REGION": "eu"}
+    });
+    let masked = super::plan::sanitize(Some(&entry)).expect("entry");
+    let text = masked.to_string();
+    for secret in ["sk-arg", "tok-arg", "b-arg", "sk-url", "sk-env"] {
+        assert!(!text.contains(secret), "{secret} leaked");
+    }
+    assert_eq!(
+        masked["url"],
+        format!("https://mcp.example/sse?api_key={placeholder}&region=eu")
+    );
+    assert_eq!(masked["args"][3], placeholder);
+    assert_eq!(masked["args"][1], "tool");
+    assert_eq!(masked["command"], "npx");
+}
+
+/// Regression: a hand-added key used to leave the entry `written`, and the
+/// next update/enable/disable rewrote the table and silently dropped it.
+#[test]
+fn hand_added_keys_and_values_make_the_entry_modified_and_every_write_refused() {
+    type Edit = fn(&mut DocumentMut, &str);
+    let edits: [(&str, Edit); 3] = [
+        ("unknown key", |doc, name| {
+            doc["mcp_servers"][name]["startup_timeout_sec"] = toml_edit::value(30);
+            doc["mcp_servers"][name]["api_token_note"] = toml_edit::value("secret-note");
+        }),
+        ("hand-edited value", |doc, name| {
+            doc["mcp_servers"][name]["command"] = toml_edit::value("user-command");
+        }),
+        ("uninterpretable value", |doc, name| {
+            doc["mcp_servers"][name]["enabled"] = toml_edit::value("yes");
+        }),
+    ];
+    for (label, edit) in edits {
+        let f = Fixture::new();
+        let row = f.definition(false);
+        f.perform(&f.selection(&row, Action::Deploy));
+        assert_eq!(f.state().deployments[0].state, "written", "{label}");
+        assert!(f.state().deployments[0].unmanaged_keys.is_empty());
+        // An approval obtained before the edit must not apply afterwards.
+        let stale = preview(
+            &f.storage,
+            &f.environment,
+            &f.selection(&row, Action::Disable),
+            &f.backups,
+        )
+        .unwrap();
+        let mut doc = f.document();
+        edit(&mut doc, &row.server_name);
+        f.write_toml(&doc.to_string());
+        let before = f.text();
+
+        let state = f.state();
+        assert_eq!(state.deployments[0].state, "modified", "{label}");
+        if label == "unknown key" {
+            assert_eq!(
+                state.deployments[0].unmanaged_keys,
+                ["api_token_note", "startup_timeout_sec"]
+            );
+            let json = serde_json::to_string(&state).unwrap();
+            assert!(json.contains("\"unmanagedKeys\""));
+            assert!(!json.contains("secret-note"), "values never leave");
+        } else {
+            assert!(state.deployments[0].unmanaged_keys.is_empty(), "{label}");
+        }
+        for action in [
+            Action::Deploy,
+            Action::Enable,
+            Action::Disable,
+            Action::Revoke,
+        ] {
+            let refused = preview(
+                &f.storage,
+                &f.environment,
+                &f.selection(&row, action),
+                &f.backups,
+            )
+            .err();
+            assert!(
+                matches!(
+                    refused,
+                    Some(Error::OwnershipConflict | Error::InvalidConfig)
+                ),
+                "{label} {action:?}: {refused:?}"
+            );
+        }
+        assert!(
+            apply(
+                &f.storage,
+                &f.store,
+                &f.environment,
+                &ApplyRequest {
+                    selection: f.selection(&row, Action::Disable),
+                    approval: stale.approval,
+                },
+                &f.backups,
+            )
+            .is_err(),
+            "{label}"
+        );
+        assert_eq!(f.text(), before, "{label}: file untouched after refusal");
+    }
+}
+
+#[test]
+fn put_entry_refuses_entries_with_unmanaged_keys() {
+    let mut doc = DocumentMut::new();
+    let entry = serde_json::json!({
+        "command": "c", "args": [], "env": {}, "enabled": true,
+        "unmanagedKeys": ["startup_timeout_sec"]
+    });
+    assert_eq!(
+        plan::put_entry(&mut doc, "a", &entry).err(),
+        Some(Error::OwnershipConflict)
+    );
+    assert!(doc.to_string().is_empty());
+}
+
+#[test]
+fn revoke_from_an_inline_parent_keeps_the_users_other_entries_verbatim() {
+    let f = Fixture::new();
+    let row = f.definition(false);
+    f.write_toml("model = \"m\"\n");
+    f.perform(&f.selection(&row, Action::Deploy));
+    // Our entry as inline text, between two user entries with their own
+    // spacing, all inside one inline `mcp_servers` table.
+    let mut ours = f.document()["mcp_servers"][row.server_name.as_str()]
+        .as_table()
+        .unwrap()
+        .clone()
+        .into_inline_table();
+    ours.fmt();
+    let first = r#"alpha = { command = "a",  args = ["--one"] }"#;
+    let last = r#"zeta = {command="z"}"#;
+    let name = &row.server_name;
+    f.write_toml(&format!(
+        "model = \"m\"\nmcp_servers = {{ {first}, {name} = {ours}, {last} }}\n# after\n"
+    ));
+    assert_eq!(
+        f.state()
+            .deployments
+            .iter()
+            .find(|row| row.state != "absent")
+            .map(|row| row.state.as_str()),
+        Some("written"),
+        "{}",
+        f.text()
+    );
+    f.perform(&f.selection(&row, Action::Revoke));
+    let text = f.text();
+    let doc = f.document();
+    let servers = doc["mcp_servers"].as_inline_table().expect("still inline");
+    assert!(servers.get(name).is_none(), "{text}");
+    assert_eq!(servers.len(), 2, "{text}");
+    assert!(text.contains(first), "{text}");
+    assert!(text.contains(last), "{text}");
+    assert!(text.starts_with("model = \"m\"\n"), "{text}");
+    assert!(text.ends_with("# after\n"), "{text}");
+}
+
+#[test]
+fn odd_hand_added_keys_stay_within_the_interface_limits() {
+    let f = Fixture::new();
+    let row = f.definition(false);
+    f.perform(&f.selection(&row, Action::Deploy));
+    let mut doc = f.document();
+    let entry = doc["mcp_servers"][row.server_name.as_str()]
+        .as_table_mut()
+        .unwrap();
+    entry.insert("", toml_edit::value(1));
+    entry.insert(&"k".repeat(200), toml_edit::value(2));
+    for index in 0..70 {
+        entry.insert(&format!("extra{index:02}"), toml_edit::value(index));
+    }
+    f.write_toml(&doc.to_string());
+    assert!(f.text().contains("\"\" = 1"), "{}", f.text());
+
+    let state = f.state();
+    let deployment = &state.deployments[0];
+    assert_eq!(deployment.state, "modified");
+    assert_eq!(deployment.unmanaged_keys.len(), 64);
+    for key in &deployment.unmanaged_keys {
+        assert!((1..=128).contains(&key.encode_utf16().count()), "{key}");
+    }
+    assert!(
+        deployment
+            .unmanaged_keys
+            .iter()
+            .any(|key| key.starts_with("extra"))
+    );
+    // Every write is still refused: the digest saw all keys.
+    let refused = preview(
+        &f.storage,
+        &f.environment,
+        &f.selection(&row, Action::Disable),
+        &f.backups,
+    )
+    .err();
+    assert!(
+        matches!(
+            refused,
+            Some(Error::OwnershipConflict | Error::InvalidConfig)
+        ),
+        "{refused:?}"
+    );
+}

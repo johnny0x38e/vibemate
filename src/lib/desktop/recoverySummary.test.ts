@@ -6,6 +6,14 @@ import { readGrokMcpState } from "./grokMcp";
 import { readPiMcpState } from "./piMcp";
 import { listSkillDeployRecoveries } from "./skills";
 import { listRecoverySummary } from "./recoverySummary";
+import { readCodexSettingsState } from "./codex";
+import { readCodexMcpState } from "./codexMcp";
+import {
+    codexMcpRecovery,
+    codexSettingsRecovery,
+    codexSettingsState,
+    emptyCodexMcpState,
+} from "../../test/codexFixtures";
 
 vi.mock(import("@tauri-apps/api/core"), async (importOriginal) => ({
     ...(await importOriginal()),
@@ -32,7 +40,18 @@ vi.mock(import("./grokMcp"), async (importOriginal) => ({
     readGrokMcpState: vi.fn(),
 }));
 
+vi.mock(import("./codex"), async (importOriginal) => ({
+    ...(await importOriginal()),
+    readCodexSettingsState: vi.fn(),
+}));
+vi.mock(import("./codexMcp"), async (importOriginal) => ({
+    ...(await importOriginal()),
+    readCodexMcpState: vi.fn(),
+}));
+
 const tauri = vi.mocked(isTauri);
+const codexSettings = vi.mocked(readCodexSettingsState);
+const codexMcp = vi.mocked(readCodexMcpState);
 const history = vi.mocked(readConfigurationHistory);
 const skills = vi.mocked(listSkillDeployRecoveries);
 const pi = vi.mocked(readPiMcpState);
@@ -46,6 +65,8 @@ beforeEach(() => {
     pi.mockReset();
     grok.mockReset();
     claude.mockReset().mockRejectedValue(new Error("claude down"));
+    codexSettings.mockReset().mockRejectedValue(new Error("codex down"));
+    codexMcp.mockReset().mockRejectedValue(new Error("codex mcp down"));
 });
 
 test("browser preview stays honest without inventing rows", async () => {
@@ -224,6 +245,42 @@ test("surfaces an interrupted Claude Code user-scope MCP change", async () => {
                 agentId: "claudeCode",
                 subject: "claude-tools",
                 detail: "deploy:intended",
+            },
+        ],
+    });
+});
+
+test("surfaces interrupted Codex MCP and provider changes", async () => {
+    history.mockRejectedValue(new Error("history down"));
+    skills.mockResolvedValue({ kind: "desktop", items: [] });
+    pi.mockRejectedValue(new Error("pi down"));
+    grok.mockRejectedValue(new Error("grok down"));
+    codexMcp.mockResolvedValue({
+        ...emptyCodexMcpState,
+        recovery: codexMcpRecovery,
+    });
+    codexSettings.mockResolvedValue({
+        ...codexSettingsState,
+        recovery: codexSettingsRecovery,
+    });
+    await expect(listRecoverySummary()).resolves.toEqual({
+        kind: "desktop",
+        items: [
+            {
+                id: `mcp:codex:${codexMcpRecovery.id}`,
+                domain: "mcp",
+                destination: "mcp",
+                agentId: "codex",
+                subject: codexMcpRecovery.serverName,
+                detail: `${codexMcpRecovery.action}:${codexMcpRecovery.observation}`,
+            },
+            {
+                id: `agent:codex:${codexSettingsRecovery.id}`,
+                domain: "agentConfig",
+                destination: "agents",
+                agentId: "codex",
+                subject: "deploy",
+                detail: "vibemate-deep-seek:before",
             },
         ],
     });

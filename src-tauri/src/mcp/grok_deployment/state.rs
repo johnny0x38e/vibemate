@@ -125,7 +125,7 @@ pub(super) fn read_state(
             if !root_path.is_absolute() || config_root.chars().any(char::is_control) {
                 return Err(Error::StorageUnavailable);
             }
-            let state = match read_target_bytes(&root_path.join("config.toml")) {
+            let (state, unmanaged_keys) = match read_target_bytes(&root_path.join("config.toml")) {
                 Ok((target, bytes)) if !target.symlink => {
                     match plan::parse_document(&bytes, target.exists) {
                         Ok(doc) => match doc
@@ -133,20 +133,13 @@ pub(super) fn read_state(
                             .and_then(Item::as_table_like)
                             .and_then(|servers| servers.get(&ownership.server_name))
                         {
-                            Some(item) => {
-                                let entry = plan::entry_from_toml(item)?;
-                                if plan::entry_digest(&entry)? == ownership.entry_digest {
-                                    "written"
-                                } else {
-                                    "modified"
-                                }
-                            }
-                            None => "missing",
+                            Some(item) => observe_entry(item, &ownership)?,
+                            None => ("missing", Vec::new()),
                         },
-                        Err(_) => "unreadable",
+                        Err(_) => ("unreadable", Vec::new()),
                     }
                 }
-                _ => "unreadable",
+                _ => ("unreadable", Vec::new()),
             };
             Ok(Deployment {
                 definition_id,
@@ -154,6 +147,7 @@ pub(super) fn read_state(
                 config_root,
                 ownership,
                 state: state.to_string(),
+                unmanaged_keys,
             })
         })
         .collect::<Result<Vec<_>, Error>>()?;
@@ -173,6 +167,21 @@ pub(super) fn read_state(
         next_cursor,
         recovery,
     })
+}
+
+/// Compare the native entry with the recorded digest; key names only leave.
+/// An entry vibemate cannot interpret (for example a non-boolean `enabled`)
+/// was changed by hand, so it is `modified` for this row instead of failing
+/// the whole state read. Same rule as the Codex adapter.
+fn observe_entry(item: &Item, ownership: &Ownership) -> Result<(&'static str, Vec<String>), Error> {
+    let Ok(entry) = plan::entry_from_toml(item) else {
+        return Ok(("modified", Vec::new()));
+    };
+    let written = plan::entry_digest(&entry)? == ownership.entry_digest;
+    // Display names only, within interface limits; the digest above used
+    // the full key set.
+    let unmanaged_keys = crate::mcp::unmanaged_keys::display_names(&entry);
+    Ok((if written { "written" } else { "modified" }, unmanaged_keys))
 }
 
 pub(super) fn read_history(

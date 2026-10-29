@@ -375,6 +375,29 @@ describe("provider desktop boundary", () => {
                     clearable: true,
                 },
             ],
+            codexReferences: [
+                {
+                    configRoot: "/home/test/.codex",
+                    providerKey: "vibemate-pi-test",
+                    modelId: null,
+                    binding: "provider",
+                    state: "active",
+                },
+                {
+                    configRoot: "/home/test/.codex",
+                    providerKey: "vibemate-pi-test",
+                    modelId: "deepseek-flash",
+                    binding: "default",
+                    state: "stale",
+                },
+                {
+                    configRoot: "/home/test/.codex",
+                    providerKey: "vibemate-pi-test",
+                    modelId: null,
+                    binding: "pending",
+                    state: "unverified",
+                },
+            ],
             rememberedPreferences: 1,
             canDelete: false,
         };
@@ -392,6 +415,39 @@ describe("provider desktop boundary", () => {
             { ...impact, rememberedPreferences: -1 },
             { ...impact, canDelete: "yes" },
             { ...impact, extra: null },
+            // Codex rows are a required, separate list and always block.
+            { ...impact, codexReferences: undefined },
+            { ...impact, references: [], canDelete: true },
+            {
+                ...impact,
+                codexReferences: [
+                    { ...impact.codexReferences[0], modelId: "deepseek-flash" },
+                ],
+            },
+            {
+                ...impact,
+                codexReferences: [
+                    { ...impact.codexReferences[1], modelId: null },
+                ],
+            },
+            {
+                ...impact,
+                codexReferences: [
+                    { ...impact.codexReferences[2], state: "active" },
+                ],
+            },
+            {
+                ...impact,
+                codexReferences: [
+                    { ...impact.codexReferences[0], providerKey: "openai" },
+                ],
+            },
+            {
+                ...impact,
+                codexReferences: [
+                    { ...impact.codexReferences[0], clearable: false },
+                ],
+            },
         ]) {
             vi.mocked(invoke).mockResolvedValueOnce(response);
             await expect(providerDeletionImpact(ID)).rejects.toMatchObject({

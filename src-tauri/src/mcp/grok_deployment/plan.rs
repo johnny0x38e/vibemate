@@ -13,6 +13,11 @@ use serde_json::{Map, Value, json};
 use std::path::PathBuf;
 use toml_edit::{DocumentMut, Item, Table, value};
 
+/// Keys vibemate maps for stdio entries.
+const STDIO_KEYS: [&str; 5] = ["command", "args", "env", "cwd", "enabled"];
+/// Keys vibemate maps for streamable HTTP entries.
+const HTTP_KEYS: [&str; 3] = ["url", "headers", "enabled"];
+
 pub(super) struct Built {
     pub view: Preview,
     pub root: PathBuf,
@@ -95,10 +100,31 @@ fn string_map(item: Option<&Item>) -> Result<Map<String, Value>, Error> {
 }
 
 /// Canonical JSON for one Grok MCP table; used for ownership digests and IPC.
+///
+/// Keys vibemate does not map (anything added by hand, such as timeouts or
+/// tool filters) are listed under `unmanagedKeys`, so they change the digest:
+/// an owned entry carrying them is externally `modified`, and `put_entry`
+/// refuses to rewrite it, because rewriting the table would drop those keys.
+/// A non-boolean `enabled` is not interpretable and fails like other invalid
+/// values. Same rule as the Codex adapter.
 pub(super) fn entry_from_toml(item: &Item) -> Result<Value, Error> {
     let table = item.as_table_like().ok_or(Error::InvalidConfig)?;
-    let enabled = table.get("enabled").and_then(Item::as_bool).unwrap_or(true);
-    if table.get("command").is_some() {
+    let enabled = match table.get("enabled") {
+        None => true,
+        Some(item) => item.as_bool().ok_or(Error::InvalidConfig)?,
+    };
+    let known: &[&str] = if table.get("command").is_some() {
+        &STDIO_KEYS
+    } else {
+        &HTTP_KEYS
+    };
+    let mut unmanaged: Vec<String> = table
+        .iter()
+        .map(|(key, _)| key.to_owned())
+        .filter(|key| !known.contains(&key.as_str()))
+        .collect();
+    unmanaged.sort();
+    let mut entry = if table.get("command").is_some() {
         let command = table
             .get("command")
             .and_then(Item::as_str)
@@ -123,16 +149,20 @@ pub(super) fn entry_from_toml(item: &Item) -> Result<Value, Error> {
         if let Some(cwd) = table.get("cwd") {
             entry["cwd"] = json!(cwd.as_str().ok_or(Error::InvalidConfig)?);
         }
-        Ok(entry)
+        entry
     } else if table.get("url").is_some() {
-        Ok(json!({
+        json!({
             "url": table.get("url").and_then(Item::as_str).ok_or(Error::InvalidConfig)?,
             "headers": string_map(table.get("headers"))?,
             "enabled": enabled
-        }))
+        })
     } else {
-        Err(Error::InvalidConfig)
+        return Err(Error::InvalidConfig);
+    };
+    if !unmanaged.is_empty() {
+        entry["unmanagedKeys"] = json!(unmanaged);
     }
+    Ok(entry)
 }
 
 fn set_string_map(table: &mut Table, key: &str, fields: &Map<String, Value>) -> Result<(), Error> {
@@ -147,17 +177,34 @@ fn set_string_map(table: &mut Table, key: &str, fields: &Map<String, Value>) -> 
 }
 
 /// Write one canonical entry Value into `mcp_servers.<name>`, replacing any prior table.
+///
+/// An entry with `unmanagedKeys` is refused: the rewrite would delete them.
 pub(super) fn put_entry(
     document: &mut DocumentMut,
     name: &str,
     entry: &Value,
 ) -> Result<(), Error> {
+    if entry
+        .as_object()
+        .is_some_and(|object| object.contains_key("unmanagedKeys"))
+    {
+        return Err(Error::OwnershipConflict);
+    }
+    // An inline `mcp_servers = { … }` parent is refused as `invalid_config`
+    // during the preview, which runs this same edit.
     let servers = document
         .entry("mcp_servers")
         .or_insert_with(|| Item::Table(Table::new()))
         .as_table_mut()
         .ok_or(Error::InvalidConfig)?;
     let mut table = Table::new();
+    // Keep the replaced table's leading comment and position.
+    if let Some(old) = servers.get(name).and_then(Item::as_table) {
+        *table.decor_mut() = old.decor().clone();
+        if let Some(position) = old.position() {
+            table.set_position(Some(position));
+        }
+    }
     let object = entry.as_object().ok_or(Error::InvalidConfig)?;
     if let Some(command) = object.get("command") {
         table.insert(
@@ -216,8 +263,13 @@ pub(super) fn put_entry(
     Ok(())
 }
 
+/// Remove one entry. An inline `mcp_servers = { … }` parent is table-like
+/// too, so a revoke never reports success while the entry stays on disk.
 pub(super) fn remove_entry(document: &mut DocumentMut, name: &str) {
-    if let Some(servers) = document.get_mut("mcp_servers").and_then(Item::as_table_mut) {
+    if let Some(servers) = document
+        .get_mut("mcp_servers")
+        .and_then(Item::as_table_like_mut)
+    {
         servers.remove(name);
         if servers.is_empty() {
             document.remove("mcp_servers");
@@ -248,6 +300,8 @@ pub(super) fn sanitize(entry: Option<&Value>) -> Option<Value> {
                 *value = json!(crate::config_plan::SECRET_PLACEHOLDER);
             }
         }
+        // Credentials inside public fields: URL query/userinfo and `args`.
+        crate::secret_text::mask_public_fields(map);
     }
     Some(value)
 }

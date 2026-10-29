@@ -95,5 +95,10 @@ pub fn preview_grok_registration(
         GrokMcpPreflightError::DynamicValueUnsupported => DynamicValueUnsupported,
         GrokMcpPreflightError::PathSemanticsUnverified => PathSemanticsUnverified,
     })?;
+    let mut proposal = proposal;
+    // Display-only copy: the writer uses the preflight entry, never this one.
+    if let Some(map) = proposal.redacted_entry.as_object_mut() {
+        crate::secret_text::mask_public_fields(map);
+    }
     Ok(GrokMcpPreview { target, proposal })
 }

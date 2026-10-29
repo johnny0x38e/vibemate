@@ -162,11 +162,18 @@ pub fn model_deletion_impact(
     let remembered_preferences =
         references::remembered_preferences(storage, provider_id.as_str(), Some(model_id))
             .map_err(map_reference_read)?;
+    let codex_references =
+        references::codex_references(storage, provider_id.as_str(), Some(model_id))
+            .map_err(map_reference_read)?;
+    // The count repeats every blocking table as a safety net.
+    let bound = references::model_has_bindings(storage, provider_id.as_str(), model_id)
+        .map_err(map_reference_read)?;
     Ok(ModelDeletionImpact {
         provider_id: provider_id.as_str().to_owned(),
         model_id: model_id.to_owned(),
-        can_delete: references.is_empty(),
+        can_delete: references.is_empty() && codex_references.is_empty() && !bound,
         references,
+        codex_references,
         remembered_preferences,
     })
 }
@@ -270,8 +277,11 @@ pub fn delete_manual_model(
     }
     let bindings: i64 = transaction
         .query_row(
-            "SELECT COUNT(*) FROM grok_model_binding
-             WHERE provider_id = ?1 AND model_id = ?2",
+            "SELECT
+                (SELECT COUNT(*) FROM grok_model_binding
+                 WHERE provider_id = ?1 AND model_id = ?2) +
+                (SELECT COUNT(*) FROM codex_default_binding
+                 WHERE provider_id = ?1 AND model_id = ?2)",
             params![provider_id.as_str(), request.model_id],
             |row| row.get(0),
         )
@@ -343,8 +353,11 @@ pub fn save_provider_model_selections(
     for model_id in &remove {
         let bindings: i64 = transaction
             .query_row(
-                "SELECT COUNT(*) FROM grok_model_binding
-                 WHERE provider_id = ?1 AND model_id = ?2",
+                "SELECT
+                    (SELECT COUNT(*) FROM grok_model_binding
+                     WHERE provider_id = ?1 AND model_id = ?2) +
+                    (SELECT COUNT(*) FROM codex_default_binding
+                     WHERE provider_id = ?1 AND model_id = ?2)",
                 params![provider_id.as_str(), model_id],
                 |row| row.get(0),
             )

@@ -19,6 +19,7 @@ import {
     deleteSkill,
     getSkill,
     importSkillFolder,
+    listAgentSkillDeployments,
     listSkillDeployments,
     listSkills,
     pickSkillFolder,
@@ -34,6 +35,9 @@ import { SkillInstallDialog } from "./SkillInstallDialog";
 import { SkillMarketplacePage } from "./SkillMarketplacePage";
 import { SkillRecoveryPanel } from "./SkillRecoveryPanel";
 import { skillSource } from "./skillSource";
+import { countInjectedAgents, INJECT_AGENTS } from "./skillInject";
+import chip from "../../components/infoChip.module.css";
+import inject from "./SkillInject.module.css";
 import buttons from "../../components/actionButtons.module.css";
 import dialog from "./SkillDeleteDialog.module.css";
 import surfaceList from "../../components/surfaceList.module.css";
@@ -145,6 +149,11 @@ export function SkillLibrary({
     }>({ targetId: null, state: { kind: "idle" } });
     // A deletion whose files could not be removed keeps offering the retry.
     const [cleanupPending, setCleanupPending] = useState(false);
+    // Agents each skill is injected into; null until read or when unavailable.
+    const [injectCounts, setInjectCounts] = useState<ReadonlyMap<
+        string,
+        number
+    > | null>(null);
     const active = useRef(true);
     const readGeneration = useRef(0);
     const pageGeneration = useRef(0);
@@ -268,6 +277,40 @@ export function SkillLibrary({
             active = false;
         };
     }, [deleteTarget]);
+
+    // One bulk deployment list per supported Agent (three calls in total)
+    // gives every row its injected-Agent count. Re-read whenever the list is
+    // shown again, so injecting from a detail page is reflected on return.
+    const listShown = !hidden && page.kind === "list" && list.kind === "ready";
+    const listItems = list.kind === "ready" ? list.items : null;
+    useEffect(() => {
+        if (!listShown || listItems === null) return;
+        let current = true;
+        void Promise.all(
+            INJECT_AGENTS.map((agent) => listAgentSkillDeployments(agent)),
+        ).then(
+            (results) => {
+                if (!current) return;
+                const lists = results.flatMap((result) =>
+                    result.kind === "desktop" ? [result.items] : [],
+                );
+                // Browser preview has no deployments to count; hide the chips.
+                setInjectCounts(
+                    lists.length === results.length
+                        ? countInjectedAgents(lists)
+                        : null,
+                );
+            },
+            () => {
+                // Counts are a hint; a failed read hides them instead of
+                // showing a misleading "Not injected".
+                if (current) setInjectCounts(null);
+            },
+        );
+        return () => {
+            current = false;
+        };
+    }, [listShown, listItems]);
 
     function returnToList(): void {
         pageGeneration.current++;
@@ -741,6 +784,15 @@ export function SkillLibrary({
                                                 </p>
                                             </div>
                                             <div className={styles["trailing"]}>
+                                                {injectCounts !== null && (
+                                                    <InjectCountChip
+                                                        count={
+                                                            injectCounts.get(
+                                                                record.id,
+                                                            ) ?? 0
+                                                        }
+                                                    />
+                                                )}
                                                 <IconButton
                                                     icon="edit"
                                                     blocked={blocked}
@@ -868,22 +920,19 @@ export function SkillLibrary({
                                                 }
                                                 key={`${row.agentId}:${row.configRoot}`}
                                             >
-                                                {t("skills.deploy.rowSummary", {
-                                                    agent: targetAgentLabel(
-                                                        row.agentId,
-                                                    ),
-                                                    mode: t(
-                                                        row.mode === "symlink"
-                                                            ? "skills.deploy.modeSymlink"
-                                                            : "skills.deploy.modeCopy",
-                                                    ),
-                                                    revision: row.skillRevision,
-                                                    sync: t(
-                                                        row.inSync
-                                                            ? "skills.deploy.inSync"
-                                                            : "skills.deploy.outOfSync",
-                                                    ),
-                                                })}
+                                                {t(
+                                                    "skills.deploy.referenceRow",
+                                                    {
+                                                        agent: targetAgentLabel(
+                                                            row.agentId,
+                                                        ),
+                                                        status: t(
+                                                            row.inSync
+                                                                ? "skills.inject.status.injected"
+                                                                : "skills.inject.status.needs_sync",
+                                                        ),
+                                                    },
+                                                )}
                                             </li>
                                         ))}
                                     </ul>
@@ -945,5 +994,23 @@ export function SkillLibrary({
                 returnFocus={installTrigger}
             />
         </section>
+    );
+}
+
+/**
+ * Row hint naming how many Agents a skill is injected into. A count uses the
+ * info chip; "Not injected" stays quiet secondary text instead of a colored
+ * chip, so it never reads as a success state.
+ */
+function InjectCountChip({ count }: { count: number }): JSX.Element {
+    const { t } = useTranslation();
+    return count > 0 ? (
+        <span className={chip["chip"]}>
+            {t("skills.inject.injectedAgents", { count })}
+        </span>
+    ) : (
+        <span className={inject["countNone"]}>
+            {t("skills.inject.notInjectedAnywhere")}
+        </span>
     );
 }

@@ -2,9 +2,11 @@ import { invoke, isTauri } from "@tauri-apps/api/core";
 import {
     PROVIDER_PROTOCOLS,
     agentReferences,
+    codexReferences,
     hasExactKeys,
     isObject,
     type AgentReference,
+    type CodexReference,
     type ProviderProtocol,
 } from "./providers";
 
@@ -271,6 +273,12 @@ export interface ModelDeletionImpact {
     providerId: string;
     modelId: string;
     references: AgentReference[];
+    /**
+     * The owned Codex default when it names this Provider/model pair (binding
+     * `default`); it blocks deletion until cleared in Codex settings. The
+     * wrapper always sets it; optional only so existing mocks type-check.
+     */
+    codexReferences?: CodexReference[];
     /** Claude Code remembered choices removed by the same transaction. */
     rememberedPreferences: number;
     /** True only when no binding row blocks deletion. */
@@ -762,6 +770,7 @@ export async function modelDeletionImpact(
             "providerId",
             "modelId",
             "references",
+            "codexReferences",
             "rememberedPreferences",
             "canDelete",
         ],
@@ -777,15 +786,25 @@ export async function modelDeletionImpact(
         throw invalidResponse();
     }
     let references: AgentReference[];
+    let codex: CodexReference[];
     try {
         references = agentReferences(data["references"]);
+        codex = codexReferences(data["codexReferences"]);
     } catch {
         throw invalidResponse();
     }
+    if (
+        codex.some(
+            (row) => row.binding !== "default" || row.modelId !== modelId,
+        ) ||
+        (data["canDelete"] && (references.length > 0 || codex.length > 0))
+    )
+        throw invalidResponse();
     return {
         providerId,
         modelId,
         references,
+        codexReferences: codex,
         rememberedPreferences: data["rememberedPreferences"],
         canDelete: boolean(data["canDelete"]),
     };

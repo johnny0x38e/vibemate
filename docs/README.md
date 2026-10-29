@@ -24,17 +24,20 @@ planned.
   atomic replacement, operation journal, history, version restore and deletion.
 - [`skills.md`](skills.md): central Skill library, local import, source editing
   and deletion.
-- [`mcp.md`](mcp.md): central MCP definitions, credential references and
-  deletion.
+- [`mcp.md`](mcp.md): central MCP definitions, credential references, deletion
+  and reviewed user-level registration for Claude Code, Pi, Grok Build and
+  Codex.
 - [`models.md`](models.md): provider model discovery, browse/selection, manual
   rows, capability evidence and model parameters.
 - [`logging.md`](logging.md): Rust local logging and Settings log access.
 - [`releases.md`](releases.md): changelog rules and the draft release workflow.
 - [`integrations/model-parameter-mapping.md`](integrations/model-parameter-mapping.md):
   P24.a Agent field evidence, version/protocol restrictions and unresolved checks.
+- [`integrations/codex.md`](integrations/codex.md): Codex user-level Provider,
+  default model, MCP and Skill writes, ownership and known limits.
 - [`integrations/`](integrations): verified third-party contracts for the three
-  providers and the three configured Agents. Recheck them before changing a
-  protocol mapping.
+  providers and the four configured Agents (Claude Code, Pi, Grok Build and
+  Codex). Recheck them before changing a protocol mapping.
 
 ## Plans: what remains
 
@@ -45,7 +48,9 @@ planned.
 - [`plans/model-parameters.md`](plans/model-parameters.md): model metadata and
   how existing Provider model definitions are injected into native Agents.
 - [`plans/mcp-deployment.md`](plans/mcp-deployment.md): Pi registration lifecycle,
-  entry ownership, private writes and recovery boundaries; Grok remains separate.
+  entry ownership, private writes and recovery boundaries, plus the Grok Build
+  preflight, preview and delivered write workflow (schema v33). Claude Code and
+  Codex registration are described in `mcp.md`.
 - [`plans/backend-modularity.md`](plans/backend-modularity.md): backend module
   boundaries and the unplanned future integrations.
 - [`plans/configuration-versions.md`](plans/configuration-versions.md): independent

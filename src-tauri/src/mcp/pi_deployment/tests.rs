@@ -939,3 +939,26 @@ fn crash_after_writer_before_metadata_preserves_pending_and_refuses_external_div
     f.recovery();
     assert_eq!(f.state().deployments.len(), 1);
 }
+
+#[test]
+fn previews_mask_url_query_and_argument_credentials() {
+    let placeholder = crate::config_plan::SECRET_PLACEHOLDER;
+    let entry = serde_json::json!({
+        "command": "npx",
+        "args": ["-y", "tool", "--api-key", "sk-arg", "--token=tok-arg", "Authorization: Bearer b-arg"],
+        "url": "https://mcp.example/sse?api_key=sk-url&region=eu",
+        "env": {"API_TOKEN": "sk-env", "REGION": "eu"}
+    });
+    let masked = super::plan::sanitize(Some(&entry)).expect("entry");
+    let text = masked.to_string();
+    for secret in ["sk-arg", "tok-arg", "b-arg", "sk-url", "sk-env"] {
+        assert!(!text.contains(secret), "{secret} leaked");
+    }
+    assert_eq!(
+        masked["url"],
+        format!("https://mcp.example/sse?api_key={placeholder}&region=eu")
+    );
+    assert_eq!(masked["args"][3], placeholder);
+    assert_eq!(masked["args"][1], "tool");
+    assert_eq!(masked["command"], "npx");
+}

@@ -15,6 +15,7 @@ import {
     type ProviderRecord,
 } from "../../lib/desktop/providers";
 import buttons from "../../components/actionButtons.module.css";
+import { CodexReferenceRows } from "./CodexReferenceRows";
 import styles from "./ProviderDeleteAction.module.css";
 
 /** One destructive list action: confirm, delete, then report the outcome. */
@@ -200,6 +201,11 @@ export function ProviderDeleteAction({
         impactState.impact.canDelete;
     const references =
         impactState.kind === "ready" ? impactState.impact.references : [];
+    // Codex bindings block deletion too; they are resolved in Codex settings.
+    const codexRefs =
+        impactState.kind === "ready"
+            ? (impactState.impact.codexReferences ?? [])
+            : [];
     const remembered =
         impactState.kind === "ready"
             ? impactState.impact.rememberedPreferences
@@ -264,95 +270,122 @@ export function ProviderDeleteAction({
                             {t(`providers.errors.${impactState.code}`)}
                         </p>
                     )}
-                    {impactState.kind === "ready" && references.length > 0 && (
-                        <div className={styles["references"]}>
-                            <p className={styles["hint"]}>
-                                {t("providers.delete.referencesHint")}
-                            </p>
-                            <ul
-                                className={styles["referenceList"]}
-                                aria-label={t(
-                                    "providers.delete.referencesLabel",
-                                )}
-                            >
-                                {references.map((reference) => {
-                                    const key = referenceKey(reference);
-                                    return (
-                                        <li
-                                            className={styles["referenceRow"]}
-                                            key={key}
-                                        >
-                                            <div>
-                                                <p
-                                                    className={
-                                                        styles["referenceName"]
-                                                    }
-                                                >
-                                                    {t(
-                                                        `providers.delete.referenceLabel.${reference.agentId}`,
-                                                        {
-                                                            label: reference.label,
-                                                        },
-                                                    )}
-                                                </p>
-                                                <p
-                                                    className={
-                                                        styles["referenceMeta"]
-                                                    }
-                                                >
-                                                    {reference.configRoot}
-                                                    {" · "}
-                                                    {t(
-                                                        `providers.delete.referenceStates.${reference.state}`,
-                                                    )}
-                                                </p>
-                                            </div>
-                                            {reference.clearable ? (
-                                                <button
-                                                    type="button"
-                                                    className={
-                                                        buttons["secondary"]
-                                                    }
-                                                    disabled={
-                                                        clearing !== null ||
-                                                        deleting
-                                                    }
-                                                    onClick={() => {
-                                                        void clear(reference);
-                                                    }}
-                                                >
-                                                    {clearing === key
-                                                        ? t(
-                                                              "providers.delete.clearing",
-                                                          )
-                                                        : t(
-                                                              "providers.delete.clear",
-                                                          )}
-                                                </button>
-                                            ) : (
-                                                <p
-                                                    className={
-                                                        styles[
-                                                            "referenceAction"
-                                                        ]
-                                                    }
-                                                >
-                                                    {t(
-                                                        `providers.delete.referenceHints.${reference.state}`,
-                                                    )}
-                                                </p>
-                                            )}
-                                        </li>
-                                    );
-                                })}
-                            </ul>
-                            {clearError !== null && (
-                                <p className={styles["error"]} role="alert">
-                                    {t(`providers.errors.${clearError}`)}
+                    {impactState.kind === "ready" &&
+                        (references.length > 0 || codexRefs.length > 0) && (
+                            <div className={styles["references"]}>
+                                <p className={styles["hint"]}>
+                                    {t("providers.delete.referencesHint")}
                                 </p>
-                            )}
-                        </div>
-                    )}
+                                <ul
+                                    className={styles["referenceList"]}
+                                    aria-label={t(
+                                        "providers.delete.referencesLabel",
+                                    )}
+                                >
+                                    {references.map((reference) => {
+                                        const key = referenceKey(reference);
+                                        return (
+                                            <li
+                                                className={
+                                                    styles["referenceRow"]
+                                                }
+                                                key={key}
+                                            >
+                                                <div>
+                                                    <p
+                                                        className={
+                                                            styles[
+                                                                "referenceName"
+                                                            ]
+                                                        }
+                                                    >
+                                                        {t(
+                                                            `providers.delete.referenceLabel.${reference.agentId}`,
+                                                            {
+                                                                label: reference.label,
+                                                            },
+                                                        )}
+                                                    </p>
+                                                    <p
+                                                        className={
+                                                            styles[
+                                                                "referenceMeta"
+                                                            ]
+                                                        }
+                                                    >
+                                                        {reference.configRoot}
+                                                        {" · "}
+                                                        {t(
+                                                            `providers.delete.referenceStates.${reference.state}`,
+                                                        )}
+                                                    </p>
+                                                </div>
+                                                {reference.clearable ? (
+                                                    <button
+                                                        type="button"
+                                                        className={
+                                                            buttons["secondary"]
+                                                        }
+                                                        disabled={
+                                                            clearing !== null ||
+                                                            deleting
+                                                        }
+                                                        onClick={() => {
+                                                            void clear(
+                                                                reference,
+                                                            );
+                                                        }}
+                                                    >
+                                                        {clearing === key
+                                                            ? t(
+                                                                  "providers.delete.clearing",
+                                                              )
+                                                            : t(
+                                                                  "providers.delete.clear",
+                                                              )}
+                                                    </button>
+                                                ) : (
+                                                    <p
+                                                        className={
+                                                            styles[
+                                                                "referenceAction"
+                                                            ]
+                                                        }
+                                                    >
+                                                        {t(
+                                                            `providers.delete.referenceHints.${reference.state}`,
+                                                        )}
+                                                    </p>
+                                                )}
+                                            </li>
+                                        );
+                                    })}
+                                </ul>
+                                {codexRefs.length > 0 && (
+                                    <ul
+                                        className={styles["referenceList"]}
+                                        aria-label={t(
+                                            "providers.codexReferences.label",
+                                        )}
+                                    >
+                                        <CodexReferenceRows
+                                            references={codexRefs}
+                                            classes={{
+                                                row: styles["referenceRow"],
+                                                name: styles["referenceName"],
+                                                meta: styles["referenceMeta"],
+                                                hint: styles["referenceAction"],
+                                            }}
+                                        />
+                                    </ul>
+                                )}
+                                {clearError !== null && (
+                                    <p className={styles["error"]} role="alert">
+                                        {t(`providers.errors.${clearError}`)}
+                                    </p>
+                                )}
+                            </div>
+                        )}
                     {impactState.kind === "ready" && remembered > 0 && (
                         <p className={styles["hint"]}>
                             {t("providers.delete.remembered", {

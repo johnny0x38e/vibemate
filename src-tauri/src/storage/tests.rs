@@ -1712,8 +1712,11 @@ fn claude_mcp_migration_preserves_v34_rows_and_restricts_definitions() {
     }
 
     let storage = Storage::open_in_directory(&directory.path).expect("upgrade");
-    assert_eq!(storage.schema_version().expect("schema version"), 35);
-    assert_eq!(latest_schema_version(), 35);
+    assert_eq!(
+        storage.schema_version().expect("schema version"),
+        latest_schema_version()
+    );
+    assert!(latest_schema_version() >= 35);
     let connection = storage.lock().expect("lock");
     let kept: i64 = connection
         .query_row("SELECT COUNT(*) FROM grok_mcp_deployment", [], |row| {
@@ -1772,6 +1775,163 @@ fn claude_mcp_migration_preserves_v34_rows_and_restricts_definitions() {
 }
 
 #[test]
+fn codex_migration_preserves_v35_rows_and_admits_codex_targets() {
+    let directory = TestDirectory::new("codex-upgrade");
+    let path = directory.path.join(DATABASE_FILE_NAME);
+    let skill_id = "0123456789abcdef0123456789abcdef";
+    let operation_id = "11111111111111111111111111111111";
+    let definition_id = "fedcba9876543210fedcba9876543210";
+    let provider_id = "abcdefabcdefabcdefabcdefabcdefab";
+    let digest = "a".repeat(64);
+    let generation = "cd".repeat(16);
+    {
+        let old = Storage::open_file(&path, &MIGRATIONS[..35]).expect("v35 database");
+        old.lock()
+            .unwrap()
+            .execute_batch(&format!(
+                "INSERT INTO skill(
+                    id, name, description, origin_path, content_digest,
+                    file_count, byte_size, revision, imported_at, updated_at
+                 ) VALUES(
+                    '{skill_id}', 'demo', 'A test skill.', '/tmp/demo', '{digest}',
+                    1, 1, 1, 1, 1
+                 );
+                 INSERT INTO skill_deployment VALUES(
+                    '{skill_id}', 'claudeCode', '/home/test/.claude', 'demo', 'copy',
+                    1, '{digest}', 7
+                 );
+                 INSERT INTO skill_deploy_operation(
+                    id, kind, state, skill_id, agent_id, config_root, target_name,
+                    target_path, mode, skill_revision, content_digest, created_at, updated_at
+                 ) VALUES(
+                    '{operation_id}', 'apply', 'unknown', '{skill_id}', 'grokBuild',
+                    '/home/test/.grok', 'demo', '/home/test/.grok/skills/demo', 'copy',
+                    1, '{digest}', 3, 4
+                 );
+                 INSERT INTO mcp_definition(
+                    id, display_name, server_name, namespace, enabled, revision,
+                    connection, created_at, updated_at
+                 ) VALUES(
+                    '{definition_id}', 'Demo', 'demo', 'demo', 1, 1, '{{}}', 1, 1
+                 );"
+            ))
+            .expect("seed v35 rows");
+        let refused = old.lock().unwrap().execute(
+            "INSERT INTO skill_deployment VALUES(?1, 'codex', '/home/test/.codex', 'other', 'copy', 1, ?2, 1)",
+            rusqlite::params![skill_id, digest],
+        );
+        assert!(refused.is_err(), "v35 rejects the Codex target");
+    }
+
+    let storage = Storage::open_in_directory(&directory.path).expect("upgrade");
+    assert_eq!(
+        storage.schema_version().expect("schema version"),
+        latest_schema_version()
+    );
+    assert!(latest_schema_version() >= 36);
+    let connection = storage.lock().expect("lock");
+    let kept: (String, i64) = connection
+        .query_row(
+            "SELECT agent_id, deployed_at FROM skill_deployment",
+            [],
+            |row| Ok((row.get(0)?, row.get(1)?)),
+        )
+        .expect("kept deployment");
+    assert_eq!(kept, ("claudeCode".to_owned(), 7));
+    let kept_operation: (String, String, i64) = connection
+        .query_row(
+            "SELECT agent_id, state, updated_at FROM skill_deploy_operation WHERE id=?1",
+            [operation_id],
+            |row| Ok((row.get(0)?, row.get(1)?, row.get(2)?)),
+        )
+        .expect("kept operation");
+    assert_eq!(
+        kept_operation,
+        ("grokBuild".to_owned(), "unknown".to_owned(), 4)
+    );
+    // Rebuilt indexes keep their names.
+    let indexes: i64 = connection
+        .query_row(
+            "SELECT COUNT(*) FROM sqlite_master WHERE type='index'
+             AND name IN ('skill_deploy_operation_skill','skill_deploy_operation_list')",
+            [],
+            |row| row.get(0),
+        )
+        .expect("indexes");
+    assert_eq!(indexes, 2);
+    connection
+        .execute(
+            "INSERT INTO skill_deployment VALUES(?1, 'codex', '/home/test/.codex', 'demo', 'symlink', 1, ?2, 1)",
+            rusqlite::params![skill_id, digest],
+        )
+        .expect("Codex skill target");
+    connection
+        .execute(
+            "INSERT INTO skill_deploy_operation(
+                id, kind, state, skill_id, agent_id, config_root, target_name,
+                target_path, mode, skill_revision, content_digest, created_at, updated_at
+             ) VALUES(
+                lower(hex(randomblob(16))), 'disable', 'prepared', ?1, 'codex',
+                '/home/test/.codex', 'demo', '/home/test/.codex/skills/demo', 'symlink', 1, ?2, 1, 1
+             )",
+            rusqlite::params![skill_id, digest],
+        )
+        .expect("Codex skill journal");
+    // Codex MCP ownership restricts central deletion like the other Agents.
+    connection
+        .execute(
+            "INSERT INTO codex_mcp_deployment VALUES('/home/test/.codex', ?1, 'demo', 1, ?2, ?3, 1)",
+            rusqlite::params![definition_id, digest, generation],
+        )
+        .expect("Codex MCP ownership");
+    assert!(
+        connection
+            .execute("DELETE FROM mcp_definition WHERE id=?1", [definition_id])
+            .is_err()
+    );
+    // One provider key per root, and one owned default per root.
+    connection
+        .execute(
+            "INSERT INTO codex_provider_binding VALUES('/home/test/.codex', ?1, 'vibemate-demo', 1, ?2, ?3)",
+            rusqlite::params![provider_id, digest, generation],
+        )
+        .expect("provider binding");
+    assert!(
+        connection
+            .execute(
+                "INSERT INTO codex_provider_binding VALUES('/home/test/.codex', ?1, 'vibemate-demo', 1, ?2, ?3)",
+                rusqlite::params!["b".repeat(32), digest, generation],
+            )
+            .is_err()
+    );
+    connection
+        .execute(
+            "INSERT INTO codex_default_binding VALUES('/home/test/.codex', ?1, 'm', 'vibemate-demo', ?2, '{}', ?3, 1)",
+            rusqlite::params![provider_id, digest, generation],
+        )
+        .expect("default binding");
+    let change = |action: &str, state: &str| {
+        connection.execute(
+            "INSERT INTO codex_settings_change(
+                id, config_root, provider_id, provider_key, action, state,
+                before_owner, after_owner, created_at
+             ) VALUES(lower(hex(randomblob(16))), '/home/test/.codex', ?1, 'vibemate-demo',
+                ?2, ?3, '{}', '{}', 1)",
+            rusqlite::params![provider_id, action, state],
+        )
+    };
+    for action in ["deploy", "revoke", "set_default", "clear_default"] {
+        change(action, "completed").expect("journaled action");
+    }
+    assert!(change("restore", "completed").is_err());
+    change("deploy", "prepared").expect("one pending change");
+    assert!(
+        change("revoke", "prepared").is_err(),
+        "a root has at most one pending settings change"
+    );
+}
+
+#[test]
 fn shipped_migrations_are_numbered_consecutively_from_one() {
     for (index, migration) in MIGRATIONS.iter().enumerate() {
         let expected = u32::try_from(index + 1).expect("migration count fits in u32");
@@ -1799,4 +1959,98 @@ fn storage_status_can_be_shared_between_threads() {
     // if the status, or the storage it wraps, loses `Send` or `Sync`.
     fn assert_send_sync<T: Send + Sync>() {}
     assert_send_sync::<StorageStatus>();
+}
+
+#[test]
+fn codex_settings_history_migration_backfills_model_ids() {
+    let directory = TestDirectory::new("codex-history-model");
+    let path = directory.path.join(DATABASE_FILE_NAME);
+    let provider = "abcdefabcdefabcdefabcdefabcdefab";
+    let digest = "a".repeat(64);
+    let generation = "cd".repeat(16);
+    let default_owner = format!(
+        r#"{{"provider":null,"default":{{"providerId":"{provider}","modelId":"deepseek-flash","providerKey":"vibemate-x","entryDigest":"{digest}","previous":{{"model":null,"modelProvider":null,"modelReasoningEffort":null}},"generation":"{generation}"}}}}"#
+    );
+    let empty = r#"{"provider":null,"default":null}"#;
+    {
+        let old = Storage::open_file(&path, &MIGRATIONS[..36]).expect("v36 database");
+        let connection = old.lock().unwrap();
+        for (id, action, before, after) in [
+            ("1", "deploy", empty, empty),
+            ("2", "set_default", empty, default_owner.as_str()),
+            ("3", "clear_default", default_owner.as_str(), empty),
+            ("4", "revoke", empty, empty),
+        ] {
+            connection
+                .execute(
+                    "INSERT INTO codex_settings_change(id,config_root,provider_id,provider_key,action,state,before_owner,after_owner,created_at) VALUES(?1,'/home/test/.codex',?2,'vibemate-x',?3,'completed',?4,?5,1)",
+                    rusqlite::params![id.repeat(32), provider, action, before, after],
+                )
+                .expect("seed v36 change");
+        }
+    }
+
+    let storage = Storage::open_in_directory(&directory.path).expect("upgrade");
+    assert!(storage.schema_version().expect("schema version") >= 37);
+    let connection = storage.lock().expect("lock");
+    let mut statement = connection
+        .prepare("SELECT action, model_id FROM codex_settings_change ORDER BY id")
+        .unwrap();
+    let rows: Vec<(String, Option<String>)> = statement
+        .query_map([], |row| Ok((row.get(0)?, row.get(1)?)))
+        .unwrap()
+        .collect::<Result<_, _>>()
+        .unwrap();
+    assert_eq!(
+        rows,
+        [
+            ("deploy".to_owned(), None),
+            ("set_default".to_owned(), Some("deepseek-flash".to_owned())),
+            (
+                "clear_default".to_owned(),
+                Some("deepseek-flash".to_owned())
+            ),
+            ("revoke".to_owned(), None),
+        ]
+    );
+    let too_long = connection.execute(
+        "UPDATE codex_settings_change SET model_id=?1",
+        [&"m".repeat(161)],
+    );
+    assert!(too_long.is_err(), "model ids stay bounded");
+}
+
+#[test]
+fn codex_default_effort_migration_keeps_existing_defaults_owning_the_effort() {
+    let directory = TestDirectory::new("codex-default-effort");
+    let path = directory.path.join(DATABASE_FILE_NAME);
+    let provider = "abcdefabcdefabcdefabcdefabcdefab";
+    {
+        let old = Storage::open_file(&path, &MIGRATIONS[..37]).expect("v37 database");
+        old.lock()
+            .unwrap()
+            .execute(
+                "INSERT INTO codex_default_binding VALUES('/home/test/.codex', ?1, 'm', 'vibemate-x', ?2, '{}', ?3)",
+                rusqlite::params![provider, "a".repeat(64), "cd".repeat(16)],
+            )
+            .expect("seed v37 default");
+    }
+
+    let storage = Storage::open_in_directory(&directory.path).expect("upgrade");
+    assert!(storage.schema_version().expect("schema version") >= 38);
+    let connection = storage.lock().expect("lock");
+    let writes: i64 = connection
+        .query_row("SELECT writes_effort FROM codex_default_binding", [], |r| {
+            r.get(0)
+        })
+        .expect("flag");
+    assert_eq!(
+        writes, 1,
+        "earlier defaults always set or removed the effort"
+    );
+    assert!(
+        connection
+            .execute("UPDATE codex_default_binding SET writes_effort=2", [])
+            .is_err()
+    );
 }

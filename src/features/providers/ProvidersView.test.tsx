@@ -1037,3 +1037,66 @@ test("a typed key is cleared when the page is hidden or left, while other drafts
     expect(screen.getByLabelText("API key")).toHaveProperty("value", "");
     expect(replaceKey).not.toHaveBeenCalled();
 });
+
+test("a Codex binding that blocks deletion is listed with where to resolve it", async () => {
+    list.mockResolvedValue(page([row("a")], null, 1));
+    const first = row("a");
+    impact.mockResolvedValue({
+        providerId: first.id,
+        references: [],
+        codexReferences: [
+            {
+                configRoot: "/home/test/.codex",
+                providerKey: "vibemate-work",
+                modelId: null,
+                binding: "provider",
+                state: "active",
+            },
+            {
+                configRoot: "/home/test/.codex",
+                providerKey: "vibemate-work",
+                modelId: "deepseek-chat",
+                binding: "pending",
+                state: "unverified",
+            },
+        ],
+        rememberedPreferences: 0,
+        canDelete: false,
+    });
+    await mount();
+    await screen.findByText("Work");
+    fireEvent.click(screen.getByRole("button", { name: "Delete Work" }));
+    const dialog = await screen.findByRole("dialog", {
+        name: "Delete provider",
+    });
+    const codex = await within(dialog).findByRole("list", {
+        name: "Codex bindings",
+    });
+    expect(within(codex).getAllByRole("listitem")).toHaveLength(2);
+    expect(
+        within(codex).getByText("Codex · provider vibemate-work"),
+    ).toBeDefined();
+    expect(
+        within(codex).getByText(
+            "Revoke it in Agents › Codex › Settings first.",
+        ),
+    ).toBeDefined();
+    expect(
+        within(codex).getByText(
+            "Codex · unfinished settings change · provider vibemate-work",
+        ),
+    ).toBeDefined();
+    expect(
+        within(codex).getByText(
+            "/home/test/.codex · Agent file could not be read",
+        ),
+    ).toBeDefined();
+    expect(
+        within(dialog).queryByRole("button", { name: "Clear reference" }),
+    ).toBeNull();
+    expect(
+        within(dialog)
+            .getByRole("button", { name: "Delete provider" })
+            .getAttribute("aria-disabled"),
+    ).toBe("true");
+});

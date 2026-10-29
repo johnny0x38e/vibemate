@@ -450,6 +450,9 @@ pub struct ProviderDeletionImpact {
     pub provider_id: String,
     /// Pi and Grok ownership rows that still name this Provider.
     pub references: Vec<crate::references::AgentReference>,
+    /// Owned Codex tables, the owned Codex default and pending Codex changes
+    /// that name this Provider. Each one blocks deletion.
+    pub codex_references: Vec<crate::references::CodexReference>,
     /// Claude Code remembered choices removed by the foreign-key cascade.
     pub remembered_preferences: u64,
     /// True only when no binding row blocks deletion.

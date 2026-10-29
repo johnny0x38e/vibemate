@@ -24,6 +24,15 @@ import {
     emptyClaudeMcpState,
 } from "../../test/claudeMcpFixtures";
 import { AgentMcpPanel } from "./AgentMcpPanel";
+import { readCodexMcpState } from "../../lib/desktop/codexMcp";
+import {
+    codexMcpDeployment,
+    emptyCodexMcpState,
+} from "../../test/codexFixtures";
+vi.mock(import("../../lib/desktop/codexMcp"), async (original) => ({
+    ...(await original()),
+    readCodexMcpState: vi.fn(),
+}));
 vi.mock(import("../../lib/desktop/claudeMcp"), async (original) => ({
     ...(await original()),
     readClaudeMcpState: vi.fn(),
@@ -215,3 +224,36 @@ test("Claude Code lists user-scope registrations without an enabled flag", async
         "No managed Claude Code MCP entries in this user scope.",
     );
 });
+
+test.each([
+    ["en", "Manually disabled in Codex", "false"],
+    ["zh-CN", "已在 Codex 中手动禁用", null],
+] as const)(
+    "a Codex entry turned off by hand reads as manually disabled (%s)",
+    async (locale, label, enabled) => {
+        vi.mocked(readCodexMcpState).mockResolvedValue({
+            ...emptyCodexMcpState,
+            deployments: [
+                {
+                    ...codexMcpDeployment,
+                    state: "modified",
+                    nativeEnabled: false,
+                    unmanagedKeys: ["enabled_tools"],
+                },
+            ],
+        });
+        const i18n = await createAppI18n(locale);
+        render(
+            <I18nextProvider i18n={i18n}>
+                <AgentMcpPanel
+                    agentId="codex"
+                    hidden={false}
+                    onOpenMcp={() => {}}
+                />
+            </I18nextProvider>,
+        );
+        const row = await screen.findByText(new RegExp(label, "u"));
+        expect(row.textContent).toContain("Remote tools");
+        if (enabled !== null) expect(row.textContent).toContain(enabled);
+    },
+);

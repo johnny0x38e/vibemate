@@ -1,0 +1,119 @@
+/*
+ * Codex provider/default card. Layout reuses DetailPanel and the
+ * ConfigPreview card rhythm; this module only adds the plaintext-credential
+ * warning, the "Set as Codex default" choice and the owned-provider rows.
+ * Theme tokens only: labels --color-summary, values --color-text.
+ */
+
+.warning {
+    margin: var(--space-sm) 0 0;
+    padding: 6px var(--space-sm);
+    border: 1px solid var(--color-danger-border);
+    border-radius: 6px;
+    background: var(--color-danger-bg);
+    color: var(--color-danger-fg);
+    font-size: 0.75rem;
+    line-height: 1.5;
+    overflow-wrap: anywhere;
+}
+
+.choice {
+    display: flex;
+    align-items: center;
+    gap: var(--space-sm);
+    padding: 8px 0;
+    font-size: 0.8125rem;
+    line-height: 1.4;
+}
+
+.choiceText {
+    display: grid;
+    gap: 2px;
+}
+
+.choiceHint {
+    color: var(--color-summary);
+    font-size: 0.75rem;
+}
+
+.step {
+    color: var(--color-summary);
+    font-size: 0.75rem;
+    line-height: 1.4;
+}
+
+/* Owned provider rows: no row hover or click; only the icon actions act. */
+.bindings {
+    display: grid;
+    margin: 0;
+    padding: 0;
+    list-style: none;
+}
+
+.binding {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: var(--space-sm);
+    padding: 8px 0;
+    border-top: 1px solid var(--color-border);
+}
+
+.binding:first-child {
+    border-top: 0;
+}
+
+.bindingText {
+    display: grid;
+    flex: 1;
+    gap: 2px;
+    min-width: 0;
+}
+
+.bindingName {
+    color: var(--color-text);
+    font-size: 0.8125rem;
+    font-weight: 500;
+    line-height: 1.35;
+    overflow-wrap: anywhere;
+}
+
+.bindingMeta {
+    color: var(--color-summary);
+    font-size: 0.75rem;
+    line-height: 1.4;
+    overflow-wrap: anywhere;
+}
+
+.history {
+    display: grid;
+    margin: 0;
+    padding: 0;
+    list-style: none;
+}
+
+.historyRow {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: baseline;
+    justify-content: space-between;
+    gap: 4px var(--space-sm);
+    padding: 8px 0;
+    border-top: 1px solid var(--color-border);
+    font-size: 0.8125rem;
+    line-height: 1.4;
+}
+
+.historyRow:first-child {
+    border-top: 0;
+}
+
+.historyAction {
+    color: var(--color-text);
+    overflow-wrap: anywhere;
+}
+
+.historyTime {
+    color: var(--color-summary);
+    font-size: 0.75rem;
+}

@@ -8,6 +8,14 @@ GitHub release notes are extracted from the matching version section only.
 
 ### Added
 
+- Codex write adapter, user level only (`$CODEX_HOME/config.toml`, else `~/.codex/config.toml`; schema 36–38). The Agent list **Write** dialog adds an owned `[model_providers.vibemate-<slug>]` table (`name`, `base_url`, `wire_api = "responses"`, plain-text `experimental_bearer_token`; OpenRouter also `supports_websockets = false`) and can optionally **Set as Codex default** (top-level `model` + `model_provider`, plus `model_reasoning_effort` only when the central model declares a default level; otherwise the user's value is left untouched), reviewed step by step. Only models with a Responses route are accepted (DeepSeek `deepseek-flash` and `deepseek-v4-pro`; Command Code models that list `/responses`). vibemate never writes `profile`, `[profiles.*]`, `model_catalog_json`, `env_key` or `auth`; reserved IDs and unowned same-name tables are refused, and a symlinked `config.toml` is refused. The detail History segment lists owned Providers with revoke, clear default (which restores only the keys vibemate wrote, and only when they still match, otherwise only releases ownership) and change history. The file is written as 0600; interrupted changes appear in recovery without replay. The Agent list shows `Provider · Model` only while the default is still vibemate's.
+
+- Codex MCP registration in the same user-level `config.toml` (`[mcp_servers.<name>]`) from the MCP detail page's Codex row: review, deploy/update, enable/disable through the native `enabled` flag, revoke, history entry restore and recovery. Stdio writes `command`, `args`, `env` and an absolute `cwd`; HTTP writes `url` and `http_headers`, with a central Bearer as `http_headers.Authorization`. Names outside Codex's CLI charset, relative or `~/` working directories and `${…}` values are refused. A hand edit, including a manual `enabled = false` or added tool filters, locks the entry instead of being overwritten. Deletion is blocked while Codex still references a definition.
+
+- Codex Skill injection into `$CODEX_HOME/skills/<name>/` (symlink first, copy fallback), with a warning when `~/.agents/skills` already has a skill of the same name, because Codex lists both.
+
+- Skill resync: an injected skill whose placed copy was edited, whose link was repointed or whose folder was deleted shows **Needs sync**, and **Resync** puts the library version back. Resync always asks for confirmation; when it would overwrite edited files, the dialog says so and names the backup folder, and the exact backup path is shown after success. Edited files are backed up under the app data directory first (owner-only on Unix; the newest five per Agent and skill are kept), the new placement is staged in `.vibemate-staging` beside the resolved `skills/` folder and swapped in, and an interrupted resync appears in Skill recovery. A copy that cannot be read is reported as unreadable (`read_failed`, with a message pointing at the injected copy rather than the library) instead of as edited, and Remove leaves it and its ownership untouched.
+
 - Claude Code MCP registration in the user scope only (`$CLAUDE_CONFIG_DIR/.claude.json`, else `~/.claude.json`, top-level `mcpServers`). The MCP detail page adds a Claude Code row with review, register, revoke, history restore and refresh; every other key in the file is preserved byte for byte, previews mask env and header values, and interrupted writes appear in recovery. Claude has no per-server switch at this scope, so enable/disable is reported as unsupported, and a stdio definition with `cwd` is refused because Claude ignores it. Deletion is blocked while Claude Code still references a definition. Schema 35.
 
 - Overview RecoveryHub: aggregates unfinished Agent configuration history
@@ -155,6 +163,10 @@ GitHub release notes are extracted from the matching version section only.
 
 ### Changed
 
+- Skill injection interaction redesigned. The Skill detail page lists one row per Agent (Claude Code, Pi, Grok Build, Codex) with a single status (Not injected, Injected, Needs sync, Occupied) and one matching action; an edited placement can also be removed. The link method is automatic, with **Always copy files** under a collapsed **Advanced** disclosure. Removal is confirmed, and files edited outside vibemate are left in place. The Agent detail Skill segment now lists every library skill with the same actions for all four Agents, using a batch target read, and library rows show how many Agents a skill is injected into.
+
+- Skill injection preview is read-only: it no longer creates the Agent's `skills/` directory (a missing one is reported as not injected), and the batch preview for an Agent writes nothing. Directories under the Agent root are created only by inject or resync.
+
 - The skills.sh marketplace is now a secondary page (same level as Install and Detail) instead of a dialog. Results show as fixed-size rectangular cards with paging; each card shows the skill's description as soon as the page loads, truncated with an ellipsis, and the selected card uses an accent outline. A larger detail dialog shows the description, summary and the catalog install command before installing.
 
 - MCP list rows keep only Edit, Enable/Disable, Delete and an info icon that opens the detail page; the row itself is no longer clickable and per-Agent status icons were removed from the list. The detail page lists Pi and Grok Build as rows with the Agent icon, name, config path and a Registered/Not registered status in distinct colors. Icon buttons on each row register (opening the review dialog when registration is allowed, otherwise a warning), open history, and refresh that Agent's status.
@@ -194,6 +206,20 @@ GitHub release notes are extracted from the matching version section only.
 - Settings, themes and navigation. The desktop shell keeps a fixed 200 px expanded and 88 px collapsed sidebar, an overlay title bar on macOS with native traffic lights, in-app window controls on Windows and Linux, and eight light/dark themes with independent brightness. Sidebar activation always returns to the module home while preserving mounted state, and secondary pages share one left-aligned header with an icon-only Back control and trailing Save.
 
 ### Fixed
+
+- Skill deploy scratch entries no longer appear inside an Agent's `skills/` folder. Inject copies, resync staging and set-aside copies, copy refreshes and symlink probes all live in a private `.vibemate-staging` folder beside the resolved `skills/` folder, on the same filesystem. Leftovers are swept before each inject, resync and refresh and once per launch on a background thread: entries whose operation still awaits recovery are kept, refresh leftovers are removed only after an hour, probes only when they are links, and names from earlier builds inside `skills/` are cleaned up. Nothing else is touched.
+
+- Only one vibemate runs per app data folder. A second launch exits before it opens the database or touches any Agent folder; the OS lock is released when the app exits or crashes. Skill deploy writes (inject, resync, remove, recovery Finish/Dismiss, refresh after a library update and the leftover sweep) are serialized in the app, wait for the startup sweep, and give up with `operation_failed` after 120 seconds.
+
+- Grok Build MCP registration no longer deletes keys added by hand. A managed entry with keys vibemate does not map, such as a timeout or tool filter, or with a non-boolean `enabled`, is now treated as modified: every action is refused and the manager names the unmanaged keys, instead of an update or toggle rewriting the table without them. Replacing a Grok Build or Codex entry keeps its leading comments and position.
+
+- Previews and history now mask credentials hidden in otherwise public values. For all four Agents' MCP previews, the Codex `base_url`, and every history summary and full text, credential-like URL query parameters, URL passwords and arguments such as `--api-key`/`--token`, `Bearer`, `Authorization:` headers and credential-like `NAME=value` assignments are masked. Written files are unchanged.
+
+- Revoking a Grok Build or Codex MCP entry under an inline `mcp_servers = { … }` table no longer reports success while the entry stays on disk; the entry is removed. Deploy, enable, disable and restore refuse an inline parent at preview as invalid configuration instead.
+
+- The batch Skill target preview reports an unreadable target as **Can't read target** rather than as occupied, and Codex rows include the same-named `~/.agents/skills` warning. The symlink pre-check shown in previews runs in the system temporary directory and is cleaned up on every exit path; the in-place probe that inject and resync run now uses the staging folder instead of `skills/`.
+
+- Provider and model deletion now lists Codex bindings among the references that block it.
 
 - The skills marketplace no longer stays on loading forever. Its HTTPS client now installs the TLS crypto provider before the first request, so catalog and detail requests complete or report an error.
 

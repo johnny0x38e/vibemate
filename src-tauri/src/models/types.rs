@@ -167,6 +167,8 @@ pub struct ModelDeletionImpact {
     pub model_id: String,
     /// Grok aliases and live Pi entries that still name this model.
     pub references: Vec<crate::references::AgentReference>,
+    /// The owned Codex default when it names this Provider/model pair.
+    pub codex_references: Vec<crate::references::CodexReference>,
     /// Claude Code remembered choices removed by the foreign-key cascade.
     pub remembered_preferences: u64,
     /// True only when no binding row blocks deletion.

@@ -8,8 +8,19 @@
 //! at the same name is never overwritten. Ownership lives in
 //! `skill_deployment`. Unfinished apply/disable work is journaled in
 //! `skill_deploy_operation` for explicit Finish/Dismiss recovery.
+//!
+//! Previews are read-only: a missing skills directory classifies as `absent`,
+//! and symlink support comes from a process-wide probe in the system temporary
+//! directory. Directories under an Agent root are created only by apply and
+//! resync, which also re-probe symlink support in place before writing.
+//! Temporary entries (copies before their rename, the probe link, resync
+//! staging) live in a staging folder beside the resolved `skills/` directory,
+//! never inside it; see `staging`.
 
+mod lock;
 mod repository;
+mod resync;
+mod staging;
 
 #[cfg(test)]
 mod tests;
@@ -26,18 +37,26 @@ use super::types::{
 };
 use super::validation;
 use crate::agents::{
-    DirectorySource, DiscoveryEnvironment, claude_config_root, grok_config_root, pi_config_root,
+    DirectorySource, DiscoveryEnvironment, claude_config_root, codex_config_root, grok_config_root,
+    pi_config_root,
 };
 use crate::storage::Storage;
 use std::fs;
 use std::path::{Path, PathBuf};
+use std::sync::OnceLock;
+
+pub use lock::{SkillDeployGuard, lock_skill_deploys};
+pub use resync::{preview_agent_skill_targets, resync_skill_deploy};
 
 /// Skills live directly under each Agent configuration root.
 const SKILLS_DIR: &str = "skills";
-/// Temporary sibling used while copy-sync replaces an owned target.
-const COPY_TEMP_PREFIX: &str = ".vibemate-deploy-";
-/// Probe link name used only during symlink capability checks.
-const SYMLINK_PROBE: &str = ".vibemate-symlink-probe";
+/// Every Agent whose skills directory vibemate may write.
+const DEPLOY_AGENTS: [SkillDeployAgent; 4] = [
+    SkillDeployAgent::Pi,
+    SkillDeployAgent::GrokBuild,
+    SkillDeployAgent::ClaudeCode,
+    SkillDeployAgent::Codex,
+];
 
 fn resolve_root(
     agent: SkillDeployAgent,
@@ -47,6 +66,7 @@ fn resolve_root(
         SkillDeployAgent::Pi => pi_config_root(environment),
         SkillDeployAgent::GrokBuild => grok_config_root(environment),
         SkillDeployAgent::ClaudeCode => claude_config_root(environment),
+        SkillDeployAgent::Codex => codex_config_root(environment),
     };
     match (root, source) {
         (Some(path), DirectorySource::Default | DirectorySource::Environment) => Ok(path),
@@ -74,13 +94,23 @@ pub fn preview_skill_deploy(
     let managed = library.root().join(&record.id);
     let owned = repository::get_deployment(storage, skill_id, agent.as_str(), &config_root)?;
     let target_state = classify_target(&target, &managed, owned.as_ref())?;
-    let symlink_available = probe_symlink_available(&root.join(SKILLS_DIR), &managed)?;
+    // Never probe under the Agent root here: preview must not create anything.
+    let symlink_available = symlink_support();
     let suggested_mode = if symlink_available {
         SkillDeployMode::Symlink
     } else {
         SkillDeployMode::Copy
     };
     let can_apply = target_state != SkillDeployTargetState::Foreign;
+    let shared_duplicate_path = shared_duplicate(agent, environment, &record.name)?;
+    let backup_dir = resync::pending_backup_dir(
+        library,
+        agent,
+        &record.id,
+        &target,
+        owned.as_ref(),
+        target_state,
+    )?;
     Ok(SkillDeployPreview {
         agent_id: agent,
         skill_id: record.id,
@@ -94,7 +124,27 @@ pub fn preview_skill_deploy(
         symlink_available,
         suggested_mode,
         can_apply,
+        shared_duplicate_path,
+        overwrites_user_changes: backup_dir.is_some(),
+        backup_dir,
     })
+}
+
+/// Codex also loads user skills from `~/.agents/skills`; report a same-name
+/// entry there (any kind, links included) so the UI can warn about duplicates.
+fn shared_duplicate(
+    agent: SkillDeployAgent,
+    environment: &DiscoveryEnvironment,
+    name: &str,
+) -> Result<Option<String>, SkillError> {
+    if agent != SkillDeployAgent::Codex || environment.home.as_os_str().is_empty() {
+        return Ok(None);
+    }
+    let path = environment.home.join(".agents").join(SKILLS_DIR).join(name);
+    if fs::symlink_metadata(&path).is_err() {
+        return Ok(None);
+    }
+    display_root(&path).map(Some)
 }
 
 /// Apply a reviewed skill deployment.
@@ -110,6 +160,7 @@ pub fn apply_skill_deploy(
     reviewed: ReviewedSkillDeploy,
     now_ms: i64,
 ) -> Result<SkillDeployed, SkillError> {
+    let _deploy = lock::lock_skill_deploys()?;
     if now_ms < 0 {
         return Err(SkillError::InvalidRequest);
     }
@@ -148,73 +199,23 @@ pub fn apply_skill_deploy(
     if current == SkillDeployTargetState::Foreign {
         return Err(SkillError::TargetConflict);
     }
-    let symlink_available = probe_symlink_available(&skills_parent, &managed)?;
-    match reviewed.mode {
-        SkillDeployMode::Symlink if !symlink_available => {
-            return Err(SkillError::SymlinkUnavailable);
-        }
-        SkillDeployMode::Copy => {
-            // Copy is always allowed; the interface must choose it when symlink
-            // is unavailable. When symlink is available, copy remains a valid
-            // explicit user choice.
-        }
-        _ => {}
-    }
-
-    let target_path = display_root(&target)?;
-    let operation_id = super::repository::random_id(storage)?;
-    repository::insert_operation(
+    // Directories below the Agent root are created only from here on.
+    let staging = staging::prepare(storage, &skills_parent)?;
+    let written = write_reviewed(
         storage,
-        &repository::OperationInsert {
-            id: &operation_id,
-            kind: SkillDeployOperationKind::Apply,
-            skill_id: &record.id,
-            agent_id: reviewed.agent_id.as_str(),
+        &staging,
+        &ReviewedWrite {
+            reviewed: &reviewed,
+            record: &record,
             config_root: &config_root,
-            target_name: &record.name,
-            target_path: &target_path,
-            mode: Some(reviewed.mode),
-            skill_revision: record.revision,
-            content_digest: &record.content_digest,
+            managed: &managed,
+            target: &target,
+            current,
             now_ms,
         },
-    )?;
-
-    if let Err(error) = fs::create_dir_all(&skills_parent) {
-        let _ = error;
-        let _ = repository::delete_operation(storage, &operation_id);
-        return Err(SkillError::WriteFailed);
-    }
-    if matches!(
-        current,
-        SkillDeployTargetState::OwnedSymlink | SkillDeployTargetState::OwnedCopy
-    ) && let Err(error) = remove_path(&target)
-    {
-        let _ = repository::delete_operation(storage, &operation_id);
-        return Err(error);
-    }
-
-    // On write failure the owned target may already be gone; leave the journal
-    // so recovery can classify the live path against the ownership row.
-    match reviewed.mode {
-        SkillDeployMode::Symlink => create_dir_symlink(&managed, &target)?,
-        SkillDeployMode::Copy => {
-            let plan = manifest::inspect(&managed)?;
-            let temporary = skills_parent.join(format!("{COPY_TEMP_PREFIX}{}", record.id));
-            let _ = fs::remove_dir_all(&temporary);
-            if fs::create_dir(&temporary).is_err() {
-                return Err(SkillError::WriteFailed);
-            }
-            if let Err(error) = copy(&managed, &plan, &temporary) {
-                let _ = fs::remove_dir_all(&temporary);
-                return Err(error);
-            }
-            if fs::rename(&temporary, &target).is_err() {
-                let _ = fs::remove_dir_all(&temporary);
-                return Err(SkillError::WriteFailed);
-            }
-        }
-    };
+    );
+    staging::release(&staging);
+    let (operation_id, target_path) = written?;
 
     let upsert = repository::DeploymentUpsert {
         skill_id: &record.id,
@@ -246,6 +247,93 @@ pub fn apply_skill_deploy(
     })
 }
 
+/// The checked facts of one reviewed deploy, ready to write.
+struct ReviewedWrite<'a> {
+    reviewed: &'a ReviewedSkillDeploy,
+    record: &'a SkillRecord,
+    config_root: &'a str,
+    managed: &'a Path,
+    target: &'a Path,
+    current: SkillDeployTargetState,
+    now_ms: i64,
+}
+
+/// Journal and write one reviewed deploy; the copy is built in `staging` and
+/// renamed into place. Returns the journal id and the displayed target path.
+fn write_reviewed(
+    storage: &Storage,
+    staging: &Path,
+    write: &ReviewedWrite<'_>,
+) -> Result<(String, String), SkillError> {
+    let ReviewedWrite {
+        reviewed,
+        record,
+        config_root,
+        managed,
+        target,
+        current,
+        now_ms,
+    } = *write;
+    let symlink_available = probe_symlink_available(storage, staging, managed)?;
+    if reviewed.mode == SkillDeployMode::Symlink && !symlink_available {
+        return Err(SkillError::SymlinkUnavailable);
+    }
+    // Copy is always allowed; the interface must choose it when symlink is
+    // unavailable. When symlink is available, copy remains a valid explicit
+    // user choice.
+
+    let target_path = display_root(target)?;
+    let operation_id = super::repository::random_id(storage)?;
+    repository::insert_operation(
+        storage,
+        &repository::OperationInsert {
+            id: &operation_id,
+            kind: SkillDeployOperationKind::Apply,
+            skill_id: &record.id,
+            agent_id: reviewed.agent_id.as_str(),
+            config_root,
+            target_name: &record.name,
+            target_path: &target_path,
+            mode: Some(reviewed.mode),
+            skill_revision: record.revision,
+            content_digest: &record.content_digest,
+            now_ms,
+        },
+    )?;
+    if matches!(
+        current,
+        SkillDeployTargetState::OwnedSymlink | SkillDeployTargetState::OwnedCopy
+    ) && let Err(error) = remove_path(target)
+    {
+        let _ = repository::delete_operation(storage, &operation_id);
+        return Err(error);
+    }
+
+    // On write failure the owned target may already be gone; leave the journal
+    // so recovery can classify the live path against the ownership row.
+    match reviewed.mode {
+        SkillDeployMode::Symlink => create_dir_symlink(managed, target)?,
+        SkillDeployMode::Copy => {
+            let plan = manifest::inspect(managed)?;
+            // Named after the journal row, so a sweep keeps it while the row
+            // exists and removes it once the operation is gone.
+            let temporary = staging.join(format!("{}{operation_id}", staging::DEPLOY_PREFIX));
+            if fs::create_dir(&temporary).is_err() {
+                return Err(SkillError::WriteFailed);
+            }
+            if let Err(error) = copy(managed, &plan, &temporary) {
+                let _ = fs::remove_dir_all(&temporary);
+                return Err(error);
+            }
+            if fs::rename(&temporary, target).is_err() {
+                let _ = fs::remove_dir_all(&temporary);
+                return Err(SkillError::WriteFailed);
+            }
+        }
+    }
+    Ok((operation_id, target_path))
+}
+
 /// Revoke one vibemate-managed skill deployment.
 ///
 /// When the live path no longer matches ownership, the filesystem is left alone
@@ -259,6 +347,7 @@ pub fn disable_skill_deploy(
     environment: &DiscoveryEnvironment,
     request: DisableSkillDeployRequest,
 ) -> Result<SkillDeployDisabled, SkillError> {
+    let _deploy = lock::lock_skill_deploys()?;
     validation::identity(&request.skill_id)?;
     let root = resolve_root(request.agent_id, environment)?;
     let config_root = display_root(&root)?;
@@ -323,6 +412,44 @@ pub fn disable_skill_deploy(
         target_removed,
         left_foreign,
     })
+}
+
+/// Remove deploy leftovers (staging, aside, copy and probe entries) that a
+/// crash left below Agent roots, at every resolvable Agent root and every root
+/// that holds an ownership or journal row. Only vibemate names are removed
+/// (see `staging`): entries whose journal row still exists are kept for
+/// recovery, and refresh copies only once they are stale. Nothing is created,
+/// and filesystem failures are ignored.
+///
+/// The caller must hold the deploy lock (`guard`), so no deploy in this
+/// process is running; the application also runs this only in the single
+/// instance that holds the app-data instance lock.
+///
+/// # Errors
+/// Reports storage failures while listing the recorded roots.
+pub fn sweep_skill_deploy_leftovers(
+    _guard: &SkillDeployGuard,
+    storage: &Storage,
+    environment: &DiscoveryEnvironment,
+) -> Result<(), SkillError> {
+    let mut roots: Vec<PathBuf> = DEPLOY_AGENTS
+        .iter()
+        .filter_map(|agent| resolve_root(*agent, environment).ok())
+        .collect();
+    roots.extend(
+        repository::list_config_roots(storage)?
+            .into_iter()
+            .map(PathBuf::from),
+    );
+    roots.sort();
+    roots.dedup();
+    for root in roots {
+        // Recorded roots are absolute display paths; skip anything else.
+        if root.is_absolute() {
+            staging::sweep(storage, &root.join(SKILLS_DIR));
+        }
+    }
+    Ok(())
 }
 
 /// List deployments recorded for one resolved Agent configuration root.
@@ -400,6 +527,7 @@ pub fn finish_skill_deploy_recovery(
     storage: &Storage,
     request: SkillDeployRecoveryAction,
 ) -> Result<SkillDeployRecoveryResolved, SkillError> {
+    let _deploy = lock::lock_skill_deploys()?;
     validation::identity(&request.id)?;
     let row = repository::get_operation(storage, &request.id)?.ok_or(SkillError::NotFound)?;
     let item = to_recovery_item(library, storage, &row)?;
@@ -462,6 +590,7 @@ pub fn dismiss_skill_deploy_recovery(
     storage: &Storage,
     request: SkillDeployRecoveryAction,
 ) -> Result<SkillDeployRecoveryResolved, SkillError> {
+    let _deploy = lock::lock_skill_deploys()?;
     validation::identity(&request.id)?;
     let row = repository::get_operation(storage, &request.id)?.ok_or(SkillError::NotFound)?;
     let item = to_recovery_item(library, storage, &row)?;
@@ -596,6 +725,7 @@ pub(super) fn refresh_skill_deployments_after_update(
     skill: &SkillRecord,
     now_ms: i64,
 ) -> Result<Vec<SkillUpdateDeployResult>, SkillError> {
+    let _deploy = lock::lock_skill_deploys()?;
     let rows = repository::list_deployments_for_skill(storage, &skill.id)?;
     let managed = library.root().join(&skill.id);
     let mut out = Vec::with_capacity(rows.len());
@@ -626,7 +756,7 @@ pub(super) fn refresh_skill_deployments_after_update(
                 }
             }
             (SkillDeployMode::Copy, SkillDeployTargetState::OwnedCopy) => {
-                match refresh_owned_copy(&skills_parent, &target, &managed, skill) {
+                match refresh_owned_copy(storage, &skills_parent, &target, &managed) {
                     Ok(()) => match upsert_refresh(storage, skill, &row, now_ms) {
                         Ok(()) => SkillUpdateDeployOutcome::Refreshed,
                         Err(_) => SkillUpdateDeployOutcome::Failed,
@@ -667,26 +797,30 @@ fn upsert_refresh(
     )
 }
 
+/// Replace an owned copy with the updated library content. The new copy is
+/// built in the staging folder and renamed into place.
 fn refresh_owned_copy(
+    storage: &Storage,
     skills_parent: &Path,
     target: &Path,
     managed: &Path,
-    skill: &SkillRecord,
 ) -> Result<(), SkillError> {
     let plan = manifest::inspect(managed)?;
-    let temporary = skills_parent.join(format!("{COPY_TEMP_PREFIX}{}", skill.id));
-    let _ = fs::remove_dir_all(&temporary);
-    fs::create_dir(&temporary).map_err(|_| SkillError::WriteFailed)?;
-    if let Err(error) = copy(managed, &plan, &temporary) {
-        let _ = fs::remove_dir_all(&temporary);
-        return Err(error);
-    }
-    remove_path(target)?;
-    if fs::rename(&temporary, target).is_err() {
-        let _ = fs::remove_dir_all(&temporary);
-        return Err(SkillError::WriteFailed);
-    }
-    Ok(())
+    let staging = staging::prepare(storage, skills_parent)?;
+    let result = super::repository::random_id(storage).and_then(|id| {
+        let temporary = staging.join(format!("{}{id}", staging::REFRESH_PREFIX));
+        fs::create_dir(&temporary).map_err(|_| SkillError::WriteFailed)?;
+        let swapped = copy(managed, &plan, &temporary).and_then(|_digest| {
+            remove_path(target)?;
+            fs::rename(&temporary, target).map_err(|_| SkillError::WriteFailed)
+        });
+        if swapped.is_err() {
+            let _ = fs::remove_dir_all(&temporary);
+        }
+        swapped
+    });
+    staging::release(&staging);
+    result
 }
 
 fn to_record(
@@ -698,10 +832,11 @@ fn to_record(
     let managed = library.root().join(&row.skill_id);
     let target = root.join(SKILLS_DIR).join(&row.target_name);
     let owned = Some(row.clone());
-    let state = classify_target(&target, &managed, owned.as_ref())?;
+    // An unreadable target is not known to be in sync; one such row must not
+    // fail the whole list.
     let in_sync = matches!(
-        state,
-        SkillDeployTargetState::OwnedSymlink | SkillDeployTargetState::OwnedCopy
+        classify_target(&target, &managed, owned.as_ref()),
+        Ok(SkillDeployTargetState::OwnedSymlink | SkillDeployTargetState::OwnedCopy)
     );
     let skill_name = super::repository::get_skill(storage, &row.skill_id)
         .map(|skill| skill.name)
@@ -764,7 +899,37 @@ fn classify_target(
     }
     match manifest::inspect(target).and_then(|plan| digest_tree(target, &plan)) {
         Ok(digest) if digest == owned.content_digest => Ok(SkillDeployTargetState::OwnedCopy),
-        Ok(_) | Err(_) => Ok(SkillDeployTargetState::Foreign),
+        Ok(_) => Ok(SkillDeployTargetState::Foreign),
+        Err(error) => copy_inspection_failure(target, error),
+    }
+}
+
+/// Map a failed inspection or digest of a copy target. Content vibemate would
+/// not have written (a link inside, an invalid manifest, a deleted
+/// `SKILL.md`, an oversized tree) is an edit, so `foreign`. A tree that could
+/// not be read (a folder or file vibemate may not open, or one that changed
+/// while it was read) is `read_failed`: its content is unknown, so it is
+/// neither reported as a user edit nor overwritten.
+fn copy_inspection_failure(
+    target: &Path,
+    error: SkillError,
+) -> Result<SkillDeployTargetState, SkillError> {
+    match error {
+        SkillError::SourceNotFound | SkillError::SourceChanged | SkillError::ReadFailed => {
+            Err(SkillError::ReadFailed)
+        }
+        // Inspection reports an unopenable `SKILL.md` as missing too; a
+        // regular file that exists but cannot be opened is a read failure.
+        SkillError::ManifestMissing => {
+            let manifest = target.join(manifest::MANIFEST_FILE_NAME);
+            let exists = fs::symlink_metadata(&manifest).is_ok_and(|meta| meta.is_file());
+            if exists && fs::File::open(&manifest).is_err() {
+                Err(SkillError::ReadFailed)
+            } else {
+                Ok(SkillDeployTargetState::Foreign)
+            }
+        }
+        _ => Ok(SkillDeployTargetState::Foreign),
     }
 }
 
@@ -780,12 +945,18 @@ fn symlink_points_to(link: &Path, managed: &Path) -> Result<bool, SkillError> {
     Ok(left.is_some() && left == right)
 }
 
-fn probe_symlink_available(parent: &Path, managed: &Path) -> Result<bool, SkillError> {
-    fs::create_dir_all(parent).map_err(|_| SkillError::WriteFailed)?;
-    let probe = parent.join(SYMLINK_PROBE);
+/// Probe in place whether a directory link can be created on the filesystem
+/// that holds `skills/`. The probe link goes into the staging folder (same
+/// filesystem, never scanned by an Agent) under a fresh `probe-<id>` name.
+fn probe_symlink_available(
+    storage: &Storage,
+    staging: &Path,
+    managed: &Path,
+) -> Result<bool, SkillError> {
+    let id = super::repository::random_id(storage)?;
+    let probe = staging.join(format!("{}{id}", staging::PROBE_PREFIX));
     // The probe points at the managed skill tree. Remove only that link; a
     // recursive delete would follow it and erase the library copy.
-    let _ = remove_path(&probe);
     match create_dir_symlink(managed, &probe) {
         Ok(()) => {
             let _ = remove_path(&probe);
@@ -795,6 +966,59 @@ fn probe_symlink_available(parent: &Path, managed: &Path) -> Result<bool, SkillE
             let _ = remove_path(&probe);
             Ok(false)
         }
+    }
+}
+
+/// Whether this process can create directory symlinks, probed once per process.
+///
+/// The probe runs in a fresh directory under the system temporary directory, so
+/// previews never write below an Agent root. On Windows the capability depends
+/// on Developer Mode or the symlink privilege, which is a property of the
+/// process rather than of a directory; on Unix it is almost always available.
+/// A filesystem that refuses links at the real target (FAT, some network
+/// shares) is still caught by the in-place probe that apply and resync run.
+fn symlink_support() -> bool {
+    static SUPPORT: OnceLock<bool> = OnceLock::new();
+    *SUPPORT.get_or_init(probe_symlink_in_temp)
+}
+
+fn probe_symlink_in_temp() -> bool {
+    let nanos = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .map(|elapsed| elapsed.as_nanos())
+        .unwrap_or(0);
+    let base = std::env::temp_dir().join(format!(
+        "vibemate-symlink-probe-{}-{nanos}",
+        std::process::id()
+    ));
+    if fs::create_dir(&base).is_err() {
+        return false;
+    }
+    // From here on the guard owns the probe directory: it is removed when the
+    // function returns by any path, including early returns and panics
+    // (unwinding runs `Drop`).
+    let probe = ProbeDir(base);
+    let source = probe.0.join("source");
+    let link = probe.0.join(PROBE_LINK);
+    fs::create_dir(&source).is_ok() && create_dir_symlink(&source, &link).is_ok()
+}
+
+/// Name of the link inside a temporary probe directory.
+const PROBE_LINK: &str = "link";
+
+/// Owns a temporary symlink-probe directory and deletes it on drop.
+///
+/// The link is removed on its own first (`remove_path` unlinks without
+/// following), so the recursive delete that follows can never traverse the
+/// link into its target. Cleanup errors are ignored: the directory lives under
+/// the system temporary directory, never below an Agent root, and a leftover
+/// is harmless.
+struct ProbeDir(PathBuf);
+
+impl Drop for ProbeDir {
+    fn drop(&mut self) {
+        let _ = remove_path(&self.0.join(PROBE_LINK));
+        let _ = fs::remove_dir_all(&self.0);
     }
 }
 

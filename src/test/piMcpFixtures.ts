@@ -78,7 +78,6 @@ export const piMcpDeployment: PiMcpDeployment = {
     ownership: {
         serverName: "tools",
         definitionRevision: 1,
-        entryDigest: "e".repeat(64),
         generation: "b".repeat(32),
         enabled: true,
     },

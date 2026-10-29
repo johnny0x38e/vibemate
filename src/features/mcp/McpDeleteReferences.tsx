@@ -18,7 +18,14 @@ import {
     type ClaudeMcpErrorCode,
     type ClaudeMcpState,
 } from "../../lib/desktop/claudeMcp";
+import {
+    CodexMcpError,
+    readCodexMcpState,
+    type CodexMcpErrorCode,
+    type CodexMcpState,
+} from "../../lib/desktop/codexMcp";
 import type { McpInjectAgent } from "./McpInjectRow";
+import { codexMcpStateKey } from "./codexMcpRow";
 import buttons from "../../components/actionButtons.module.css";
 import styles from "./McpPiPreview.module.css";
 
@@ -31,9 +38,15 @@ function allowed(
     pi: AgentState<PiMcpState, PiMcpErrorCode>,
     grok: AgentState<GrokMcpState, GrokMcpErrorCode>,
     claude: AgentState<ClaudeMcpState, ClaudeMcpErrorCode>,
+    codex: AgentState<CodexMcpState, CodexMcpErrorCode>,
     definitionId: string,
 ): boolean {
-    if (pi.kind !== "ready" || grok.kind !== "ready" || claude.kind !== "ready")
+    if (
+        pi.kind !== "ready" ||
+        grok.kind !== "ready" ||
+        claude.kind !== "ready" ||
+        codex.kind !== "ready"
+    )
         return false;
     return (
         pi.value.deployments.length === 0 &&
@@ -41,11 +54,13 @@ function allowed(
         grok.value.deployments.length === 0 &&
         grok.value.recovery?.definitionId !== definitionId &&
         claude.value.deployments.length === 0 &&
-        claude.value.recovery?.definitionId !== definitionId
+        claude.value.recovery?.definitionId !== definitionId &&
+        codex.value.deployments.length === 0 &&
+        codex.value.recovery?.definitionId !== definitionId
     );
 }
 
-/** Explain every retained Pi/Grok/Claude Code root reference before deletion. Advisory only;
+/** Explain every retained Pi/Grok/Claude Code/Codex root reference before deletion. Advisory only;
  * the backend repeats its transactional reference check at actual deletion. */
 export function McpDeleteReferences({
     definitionId,
@@ -64,11 +79,13 @@ export function McpDeleteReferences({
         pi: AgentState<PiMcpState, PiMcpErrorCode>;
         grok: AgentState<GrokMcpState, GrokMcpErrorCode>;
         claude: AgentState<ClaudeMcpState, ClaudeMcpErrorCode>;
+        codex: AgentState<CodexMcpState, CodexMcpErrorCode>;
     }>({
         key,
         pi: { kind: "loading" },
         grok: { kind: "loading" },
         claude: { kind: "loading" },
+        codex: { kind: "loading" },
     });
     // Reset loading state during render when the selection or retry changes,
     // matching usePiMcpRegistrations — avoid synchronous setState inside effects.
@@ -78,6 +95,7 @@ export function McpDeleteReferences({
             pi: { kind: "loading" },
             grok: { kind: "loading" },
             claude: { kind: "loading" },
+            codex: { kind: "loading" },
         });
     }
     const pi = answer.key === key ? answer.pi : { kind: "loading" as const };
@@ -85,6 +103,8 @@ export function McpDeleteReferences({
         answer.key === key ? answer.grok : { kind: "loading" as const };
     const claude =
         answer.key === key ? answer.claude : { kind: "loading" as const };
+    const codex =
+        answer.key === key ? answer.codex : { kind: "loading" as const };
     useEffect(() => {
         let current = true;
         onChecked(false);
@@ -92,7 +112,8 @@ export function McpDeleteReferences({
             readPiMcpState(definitionId),
             readGrokMcpState(definitionId),
             readClaudeMcpState(definitionId),
-        ]).then(([piResult, grokResult, claudeResult]) => {
+            readCodexMcpState(definitionId),
+        ]).then(([piResult, grokResult, claudeResult, codexResult]) => {
             if (!current) return;
             const nextPi: AgentState<PiMcpState, PiMcpErrorCode> =
                 piResult.status === "fulfilled"
@@ -124,13 +145,26 @@ export function McpDeleteReferences({
                                   ? claudeResult.reason.code
                                   : "outcome_unknown",
                       };
+            const nextCodex: AgentState<CodexMcpState, CodexMcpErrorCode> =
+                codexResult.status === "fulfilled"
+                    ? { kind: "ready", value: codexResult.value }
+                    : {
+                          kind: "error",
+                          code:
+                              codexResult.reason instanceof CodexMcpError
+                                  ? codexResult.reason.code
+                                  : "outcome_unknown",
+                      };
             setAnswer({
                 key,
                 pi: nextPi,
                 grok: nextGrok,
                 claude: nextClaude,
+                codex: nextCodex,
             });
-            onChecked(allowed(nextPi, nextGrok, nextClaude, definitionId));
+            onChecked(
+                allowed(nextPi, nextGrok, nextClaude, nextCodex, definitionId),
+            );
         });
         return () => {
             current = false;
@@ -140,7 +174,8 @@ export function McpDeleteReferences({
         <div className={styles["section"]}>
             {(pi.kind === "loading" ||
                 grok.kind === "loading" ||
-                claude.kind === "loading") && (
+                claude.kind === "loading" ||
+                codex.kind === "loading") && (
                 <p role="status">{t("mcp.delete.checkingReferences")}</p>
             )}
             {pi.kind === "error" && (
@@ -174,6 +209,20 @@ export function McpDeleteReferences({
             {claude.kind === "error" && (
                 <>
                     <p role="alert">{t(`mcp.claude.errors.${claude.code}`)}</p>
+                    <button
+                        type="button"
+                        className={buttons["secondary"]}
+                        onClick={() => {
+                            setAttempt((value) => value + 1);
+                        }}
+                    >
+                        {t("mcp.retry")}
+                    </button>
+                </>
+            )}
+            {codex.kind === "error" && (
+                <>
+                    <p role="alert">{t(`mcp.codex.errors.${codex.code}`)}</p>
                     <button
                         type="button"
                         className={buttons["secondary"]}
@@ -275,6 +324,38 @@ export function McpDeleteReferences({
                             }}
                         >
                             {t("mcp.claude.manage.resolveReferences")}
+                        </button>
+                    )}
+                </>
+            )}
+            {codex.kind === "ready" && (
+                <>
+                    {codex.value.deployments.map((row) => (
+                        <p key={`codex:${row.configRoot}`}>
+                            {t("mcp.codex.manage.deleteReference", {
+                                path: row.configRoot,
+                                state: t(codexMcpStateKey(row)),
+                            })}
+                        </p>
+                    ))}
+                    {codex.value.recovery?.definitionId === definitionId && (
+                        <p>
+                            {t("mcp.codex.recovery.pending", {
+                                name: codex.value.recovery.serverName,
+                            })}
+                        </p>
+                    )}
+                    {(codex.value.deployments.length > 0 ||
+                        codex.value.recovery?.definitionId ===
+                            definitionId) && (
+                        <button
+                            type="button"
+                            className={buttons["secondary"]}
+                            onClick={() => {
+                                onManage("codex");
+                            }}
+                        >
+                            {t("mcp.codex.manage.resolveReferences")}
                         </button>
                     )}
                 </>

@@ -39,9 +39,25 @@ vi.mock(import("../../lib/desktop/history"), async (original) => ({
 vi.mock(import("../../lib/desktop/skills"), async (original) => ({
     ...(await original()),
     listAgentSkillDeployments: vi.fn(),
+    listSkills: vi.fn(),
 }));
+vi.mock(import("../../lib/desktop/codex"), async (original) => ({
+    ...(await original()),
+    readCodexSettingsState: vi.fn(),
+    readCodexSettingsHistory: vi.fn(),
+}));
+import {
+    CodexSettingsError,
+    readCodexSettingsHistory,
+    readCodexSettingsState,
+} from "../../lib/desktop/codex";
+import { codexSettingsState } from "../../test/codexFixtures";
 import { readConfigurationHistory } from "../../lib/desktop/history";
-import { listAgentSkillDeployments } from "../../lib/desktop/skills";
+import {
+    listAgentSkillDeployments,
+    listSkills,
+    type SkillRecord,
+} from "../../lib/desktop/skills";
 const probe = vi.mocked(probeAgentVersion);
 const pi: AgentObservation = {
     id: "pi",
@@ -81,11 +97,19 @@ const result: DiscoveryResult = {
 const read = vi.mocked(discoverAgents);
 const loadHistory = vi.mocked(readConfigurationHistory);
 const listDeployments = vi.mocked(listAgentSkillDeployments);
+const listLibrary = vi.mocked(listSkills);
 beforeEach(() => {
     read.mockReset().mockResolvedValue(result);
     probe.mockReset();
     loadHistory.mockReset().mockResolvedValue({ kind: "preview" });
     listDeployments.mockReset().mockResolvedValue({ kind: "preview" });
+    listLibrary.mockReset().mockResolvedValue({ kind: "preview" });
+    vi.mocked(readCodexSettingsState)
+        .mockReset()
+        .mockRejectedValue(new CodexSettingsError("desktop_required"));
+    vi.mocked(readCodexSettingsHistory)
+        .mockReset()
+        .mockResolvedValue({ items: [], nextCursor: null });
 });
 afterEach(cleanup);
 async function mount(locale: "en" | "zh-CN" = "en") {
@@ -896,7 +920,32 @@ test("agent detail defaults to History and has no Write tab", async () => {
     expect(screen.getByRole("tab", { name: "Install & paths" })).toBeTruthy();
 });
 
-test("Claude Code reads its own Skill deployments", async () => {
+test("Claude Code lists library skills with their inject status", async () => {
+    const skill: SkillRecord = {
+        id: "f".repeat(32),
+        name: "demo-skill",
+        description: "Explains the demo skill.",
+        originPath: null,
+        sourceUrl: null,
+        sourceRevision: null,
+        fetchMethod: null,
+        installerVersion: null,
+        installerCommand: null,
+        remoteRevision: null,
+        updateCheckStatus: null,
+        lastCheckedAtMs: null,
+        lastCheckError: null,
+        contentDigest: "ab".repeat(32),
+        fileCount: 1,
+        byteSize: 10,
+        revision: 1,
+        importedAtMs: 1_700_000_000_000,
+        updatedAtMs: 1_700_000_000_000,
+    };
+    listLibrary.mockResolvedValue({
+        kind: "desktop",
+        page: { items: [skill], nextCursor: null, total: 1 },
+    });
     listDeployments.mockResolvedValue({
         kind: "desktop",
         items: [
@@ -923,8 +972,14 @@ test("Claude Code reads its own Skill deployments", async () => {
     await waitFor(() => {
         expect(listDeployments).toHaveBeenCalledWith("claudeCode");
     });
+    const row = await screen.findByRole("listitem", {
+        name: "Claude Code · demo-skill",
+    });
+    expect(await within(row).findByText("Injected")).toBeDefined();
     expect(
-        await screen.findByText(/demo-skill · Symbolic link · in sync/u),
+        within(row).getByRole("button", {
+            name: "Remove demo-skill from Claude Code",
+        }),
     ).toBeDefined();
 });
 
@@ -1000,4 +1055,42 @@ test("agent list uses Provider-style rows with status rail and Write/Detail acti
         within(list).getByText("Pi").closest("[data-agent-card]"),
     ).not.toBeNull();
     expect(list.className).not.toMatch(/cards/u);
+});
+
+test("the Codex row shows its provider · model and opens the Codex write dialog", async () => {
+    vi.mocked(readCodexSettingsState).mockResolvedValue(codexSettingsState);
+    read.mockResolvedValue({
+        kind: "desktop",
+        items: agentReport([
+            pi,
+            grok,
+            {
+                ...pi,
+                id: "codex",
+                entryPath: "/home/test/codex",
+                resolvedPath: "/home/test/codex",
+                configDirectory: "/home/test/.codex",
+                files: [{ name: "config.toml", state: "present" }],
+            },
+        ]),
+    });
+    await mount();
+    const detail = await screen.findByRole("button", {
+        name: "Open Codex details",
+    });
+    const row = detail.closest("li");
+    if (!(row instanceof HTMLElement)) {
+        throw new Error("missing Codex row");
+    }
+    expect(
+        await within(row).findByText("Deep Seek · deepseek-flash"),
+    ).toBeDefined();
+    fireEvent.click(
+        within(row).getByRole("button", {
+            name: "Write configuration for Codex",
+        }),
+    );
+    expect(
+        await screen.findByRole("dialog", { name: /Write · Codex/u }),
+    ).toBeDefined();
 });

@@ -30,7 +30,12 @@ import {
     readGrokMcpHistory,
     previewGrokMcpChange,
 } from "../../lib/desktop/grokMcp";
-import { emptyGrokMcpState, grokMcpPlan } from "../../test/grokMcpFixtures";
+import {
+    emptyGrokMcpState,
+    grokMcpDeployment,
+    grokMcpHistory,
+    grokMcpPlan,
+} from "../../test/grokMcpFixtures";
 vi.mock(import("../../lib/desktop/grokMcp"), async (original) => ({
     ...(await original()),
     readGrokMcpState: vi.fn(),
@@ -76,6 +81,26 @@ vi.mock(import("../../lib/desktop/claudeMcp"), async (original) => ({
     readClaudeMcpHistory: vi.fn(),
     previewClaudeMcpChange: vi.fn(),
     applyClaudeMcpChange: vi.fn(),
+}));
+import {
+    CodexMcpError,
+    applyCodexMcpChange,
+    previewCodexMcpChange,
+    readCodexMcpHistory,
+    readCodexMcpState,
+} from "../../lib/desktop/codexMcp";
+import {
+    codexMcpDeployment,
+    codexMcpHistory,
+    codexMcpPlan,
+    emptyCodexMcpState,
+} from "../../test/codexFixtures";
+vi.mock(import("../../lib/desktop/codexMcp"), async (original) => ({
+    ...(await original()),
+    readCodexMcpState: vi.fn(),
+    readCodexMcpHistory: vi.fn(),
+    previewCodexMcpChange: vi.fn(),
+    applyCodexMcpChange: vi.fn(),
 }));
 vi.mock(import("../../lib/desktop/mcp"), async (importOriginal) => ({
     ...(await importOriginal()),
@@ -167,6 +192,16 @@ beforeEach(() => {
         .mockReset()
         .mockResolvedValue({ ...claudeMcpPlan, definitionId: row.id });
     vi.mocked(applyClaudeMcpChange).mockReset();
+    vi.mocked(readCodexMcpState)
+        .mockReset()
+        .mockResolvedValue(emptyCodexMcpState);
+    vi.mocked(readCodexMcpHistory)
+        .mockReset()
+        .mockResolvedValue({ items: [], nextCursor: null });
+    vi.mocked(previewCodexMcpChange)
+        .mockReset()
+        .mockResolvedValue({ ...codexMcpPlan, definitionId: row.id });
+    vi.mocked(applyCodexMcpChange).mockReset();
     list.mockReset().mockResolvedValue(page([row]));
     get.mockReset().mockResolvedValue(row);
     save.mockReset().mockResolvedValue({ ...row, revision: 2, enabled: false });
@@ -523,7 +558,8 @@ test("detail shows definition + clear inject rows; header Edit primary; no delet
     expect(
         await within(grok).findByText(emptyGrokMcpState.targetPath),
     ).toBeDefined();
-    expect((await screen.findAllByText(/^Not registered$/)).length).toBe(3);
+    // Pi, Grok Build, Claude Code and Codex.
+    expect((await screen.findAllByText(/^Not registered$/)).length).toBe(4);
     // Unregistered rows expose IconButtons; no text primary deploy on the row.
     expect(
         within(pi).getByRole("button", {
@@ -1207,4 +1243,259 @@ test("deletion lists Claude Code references and cannot orphan them", async () =>
         name: "Claude Code registration · Tools",
     });
     expect(deleteMcpDefinition).not.toHaveBeenCalled();
+});
+
+test("Codex row shows its icon, config path, status and accessible IconButtons", async () => {
+    await setup();
+    await openDetail();
+    const codex = await screen.findByRole("region", {
+        name: "Codex registration · Tools",
+    });
+    expect(
+        await within(codex).findByText(emptyCodexMcpState.targetPath),
+    ).toBeDefined();
+    expect(codex.querySelector('[data-agent="codex"]')).not.toBeNull();
+    const status = await within(codex).findByText(/^Not registered$/);
+    expect(status.getAttribute("data-state")).toBe("unregistered");
+    for (const name of [
+        "Refresh registration status · Codex · Tools",
+        "Register with Codex · Tools",
+        "Codex registration history · Tools",
+    ])
+        expect(within(codex).getByRole("button", { name })).toBeDefined();
+    expect(readCodexMcpState).toHaveBeenCalledWith(row.id);
+
+    vi.mocked(readCodexMcpState).mockResolvedValue({
+        ...emptyCodexMcpState,
+        deployments: [{ ...codexMcpDeployment, definitionId: row.id }],
+    });
+    fireEvent.click(
+        within(codex).getByRole("button", {
+            name: "Refresh registration status · Codex · Tools",
+        }),
+    );
+    const registered = await within(codex).findByText(/^Registered$/);
+    expect(registered.getAttribute("data-state")).toBe("registered");
+});
+
+test("Codex + opens the review with the plaintext note, then confirms", async () => {
+    vi.mocked(applyCodexMcpChange).mockResolvedValue({
+        changeId: "f".repeat(32),
+        registered: true,
+        reloadRequired: true,
+    });
+    await setup();
+    await openDetail();
+    fireEvent.click(
+        await screen.findByRole("button", {
+            name: "Register with Codex · Tools",
+        }),
+    );
+    const dialog = await screen.findByRole("dialog", {
+        name: "Codex registration · Tools",
+    });
+    const confirm = await within(dialog).findByRole("button", {
+        name: "Confirm file change",
+    });
+    expect(previewCodexMcpChange).toHaveBeenCalledWith(
+        expect.objectContaining({
+            definitionId: row.id,
+            expectedRevision: row.revision,
+            action: "deploy",
+        }),
+    );
+    expect(within(dialog).getByText(codexMcpPlan.target.path)).toBeDefined();
+    expect(
+        within(dialog).getByText(/Codex reads them as plaintext/),
+    ).toBeDefined();
+    fireEvent.click(confirm);
+    await waitFor(() => {
+        expect(applyCodexMcpChange).toHaveBeenCalled();
+    });
+});
+
+test("Codex + shows Codex-specific error copy and no confirm", async () => {
+    vi.mocked(previewCodexMcpChange).mockRejectedValue(
+        new CodexMcpError("dynamic_value_unsupported"),
+    );
+    await setup();
+    await openDetail();
+    fireEvent.click(
+        await screen.findByRole("button", {
+            name: "Register with Codex · Tools",
+        }),
+    );
+    const dialog = await screen.findByRole("dialog", {
+        name: "Codex registration · Tools",
+    });
+    const alert = await within(dialog).findByRole("alert");
+    expect(alert.textContent).toMatch(
+        /Only literal fields are supported for Codex/,
+    );
+    expect(
+        within(dialog).queryByRole("button", { name: "Confirm file change" }),
+    ).toBeNull();
+    expect(applyCodexMcpChange).not.toHaveBeenCalled();
+});
+
+test("Codex History IconButton opens the retained entry history", async () => {
+    vi.mocked(readCodexMcpHistory).mockResolvedValue(codexMcpHistory);
+    await setup();
+    await openDetail();
+    fireEvent.click(
+        await screen.findByRole("button", {
+            name: "Codex registration history · Tools",
+        }),
+    );
+    const dialog = await screen.findByRole("dialog", {
+        name: "Codex registration history · Tools",
+    });
+    expect(
+        await within(dialog).findByRole("region", { name: "Entry history" }),
+    ).toBeDefined();
+    expect(readCodexMcpHistory).toHaveBeenCalledWith(row.id);
+});
+
+test("deletion lists Codex references and cannot orphan them", async () => {
+    vi.mocked(readCodexMcpState).mockResolvedValue({
+        ...emptyCodexMcpState,
+        deployments: [{ ...codexMcpDeployment, definitionId: row.id }],
+    });
+    await setup();
+    fireEvent.click(
+        await screen.findByRole("button", { name: "Delete “Tools”" }),
+    );
+    await screen.findByText(/Codex reference: \/test\/codex/);
+    fireEvent.click(screen.getByRole("button", { name: "Delete" }));
+    expect(deleteMcpDefinition).not.toHaveBeenCalled();
+    fireEvent.click(
+        screen.getByRole("button", { name: "Manage Codex references" }),
+    );
+    await screen.findByRole("dialog", { name: "Codex registration · Tools" });
+});
+
+test("a Codex entry changed in Codex is shown as manually disabled and locked", async () => {
+    vi.mocked(readCodexMcpHistory).mockResolvedValue(codexMcpHistory);
+    vi.mocked(readCodexMcpState).mockResolvedValue({
+        ...emptyCodexMcpState,
+        deployments: [
+            {
+                ...codexMcpDeployment,
+                definitionId: row.id,
+                state: "modified",
+                nativeEnabled: false,
+                unmanagedKeys: ["enabled_tools", "startup_timeout_sec"],
+            },
+        ],
+    });
+    await setup();
+    fireEvent.click(
+        await screen.findByRole("button", { name: "Delete “Tools”" }),
+    );
+    fireEvent.click(
+        await screen.findByRole("button", { name: "Manage Codex references" }),
+    );
+    const dialog = await screen.findByRole("dialog", {
+        name: "Codex registration · Tools",
+    });
+    expect(
+        await within(dialog).findByText("Manually disabled in Codex"),
+    ).toBeDefined();
+    expect(
+        within(dialog).getByText(
+            "Keys added in Codex that vibemate doesn't manage: enabled_tools, startup_timeout_sec.",
+        ),
+    ).toBeDefined();
+    expect(within(dialog).getByRole("note").textContent).toMatch(
+        /changed in Codex, so vibemate won't update/u,
+    );
+    for (const name of [
+        "Review update",
+        "Disable in Codex",
+        "Revoke from Codex",
+        `Review entry result ${"b".repeat(8)}`,
+    ]) {
+        expect(
+            within(dialog).getByRole<HTMLButtonElement>("button", { name })
+                .disabled,
+        ).toBe(true);
+    }
+    expect(previewCodexMcpChange).not.toHaveBeenCalled();
+});
+
+test("a hand-edited Grok entry lists its unmanaged keys and locks every action", async () => {
+    vi.mocked(readGrokMcpHistory).mockResolvedValue(grokMcpHistory);
+    vi.mocked(readGrokMcpState).mockResolvedValue({
+        ...emptyGrokMcpState,
+        deployments: [
+            {
+                ...grokMcpDeployment,
+                definitionId: row.id,
+                state: "modified",
+                unmanagedKeys: ["timeout", "trust"],
+            },
+        ],
+    });
+    await setup();
+    fireEvent.click(
+        await screen.findByRole("button", { name: "Delete “Tools”" }),
+    );
+    fireEvent.click(
+        await screen.findByRole("button", {
+            name: "Manage Grok Build references",
+        }),
+    );
+    const dialog = await screen.findByRole("dialog", {
+        name: "Grok Build registration · Tools",
+    });
+    expect(
+        await within(dialog).findByText("Changed outside vibemate"),
+    ).toBeDefined();
+    expect(
+        within(dialog).getByText(
+            "Keys added in Grok that vibemate doesn't manage: timeout, trust.",
+        ),
+    ).toBeDefined();
+    expect(within(dialog).getByRole("note").textContent).toMatch(
+        /changed outside vibemate, so vibemate won't update/u,
+    );
+    for (const name of [
+        "Review update",
+        "Disable in Grok Build",
+        "Revoke from Grok Build",
+        `Review entry result ${"b".repeat(8)}`,
+    ]) {
+        expect(
+            within(dialog).getByRole<HTMLButtonElement>("button", { name })
+                .disabled,
+        ).toBe(true);
+    }
+    expect(previewGrokMcpChange).not.toHaveBeenCalled();
+});
+
+test("a Grok entry vibemate still matches keeps its actions", async () => {
+    vi.mocked(readGrokMcpHistory).mockResolvedValue(grokMcpHistory);
+    vi.mocked(readGrokMcpState).mockResolvedValue({
+        ...emptyGrokMcpState,
+        deployments: [{ ...grokMcpDeployment, definitionId: row.id }],
+    });
+    await setup();
+    fireEvent.click(
+        await screen.findByRole("button", { name: "Delete “Tools”" }),
+    );
+    fireEvent.click(
+        await screen.findByRole("button", {
+            name: "Manage Grok Build references",
+        }),
+    );
+    const dialog = await screen.findByRole("dialog", {
+        name: "Grok Build registration · Tools",
+    });
+    const revoke = await within(dialog).findByRole<HTMLButtonElement>(
+        "button",
+        { name: "Revoke from Grok Build" },
+    );
+    expect(revoke.disabled).toBe(false);
+    expect(within(dialog).queryByRole("note")).toBeNull();
+    expect(within(dialog).queryByText(/doesn't manage/u)).toBeNull();
 });

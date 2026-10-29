@@ -266,10 +266,16 @@ pub fn provider_deletion_impact(
         references::provider_references(storage, id.as_str()).map_err(map_reference_read)?;
     let remembered_preferences = references::remembered_preferences(storage, id.as_str(), None)
         .map_err(map_reference_read)?;
+    let codex_references =
+        references::codex_references(storage, id.as_str(), None).map_err(map_reference_read)?;
+    // The count repeats every blocking table as a safety net.
+    let bound =
+        references::provider_has_bindings(storage, id.as_str()).map_err(map_reference_read)?;
     Ok(ProviderDeletionImpact {
         provider_id: id.as_str().to_owned(),
-        can_delete: references.is_empty(),
+        can_delete: references.is_empty() && codex_references.is_empty() && !bound,
         references,
+        codex_references,
         remembered_preferences,
     })
 }

@@ -12,6 +12,8 @@ fn target_name(kind: OperationKind) -> Result<&'static str, WriteError> {
         OperationKind::PiMcp => Ok("mcp.json"),
         OperationKind::GrokMcp => Ok("config.toml"),
         OperationKind::ClaudeMcp => Ok(".claude.json"),
+        // Codex provider tables and MCP entries share one user-level file.
+        OperationKind::CodexSettings | OperationKind::CodexMcp => Ok("config.toml"),
         _ => Err(WriteError::InvalidStoredOperation),
     }
 }

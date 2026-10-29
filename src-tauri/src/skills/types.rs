@@ -596,6 +596,8 @@ pub enum SkillDeployAgent {
     GrokBuild,
     /// Claude Code user configuration root.
     ClaudeCode,
+    /// OpenAI Codex user configuration root (`$CODEX_HOME|~/.codex`).
+    Codex,
 }
 
 impl SkillDeployAgent {
@@ -605,6 +607,7 @@ impl SkillDeployAgent {
             Self::Pi => "pi",
             Self::GrokBuild => "grokBuild",
             Self::ClaudeCode => "claudeCode",
+            Self::Codex => "codex",
         }
     }
 
@@ -614,6 +617,7 @@ impl SkillDeployAgent {
             "pi" => Some(Self::Pi),
             "grokBuild" => Some(Self::GrokBuild),
             "claudeCode" => Some(Self::ClaudeCode),
+            "codex" => Some(Self::Codex),
             _ => None,
         }
     }
@@ -647,6 +651,21 @@ pub struct SkillDeployPreview {
     pub suggested_mode: SkillDeployMode,
     /// False when the target is foreign or the agent root is unusable.
     pub can_apply: bool,
+    /// Codex only: an existing `~/.agents/skills/<name>` that Codex also loads,
+    /// so the same skill name would appear twice. Omitted for other Agents.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub shared_duplicate_path: Option<String>,
+    /// True when the target is a recorded deployment edited outside vibemate
+    /// (a `foreign` copy or retargeted link that resync may replace), so a
+    /// resync would overwrite user changes after backing them up. Omitted
+    /// when false.
+    #[serde(skip_serializing_if = "std::ops::Not::not")]
+    pub overwrites_user_changes: bool,
+    /// Private app-data folder that receives the backup when
+    /// `overwrites_user_changes` is true (one timestamped subfolder per
+    /// resync, the newest five kept). Omitted otherwise.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub backup_dir: Option<String>,
 }
 
 /// Tokens from a reviewed skill deploy preview.
@@ -667,6 +686,76 @@ pub struct ReviewedSkillDeploy {
     pub target_state: SkillDeployTargetState,
 }
 
+/// Request to rewrite a recorded deployment whose live target drifted.
+///
+/// Resync may overwrite the target only while vibemate holds the ownership row
+/// for (`agent_id`, `skill_id`, `config_root`). The reviewed path and state come
+/// from the preview the user saw and are re-checked before any write.
+#[derive(Debug, Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct ResyncSkillDeployRequest {
+    /// Target Agent that holds the deployment.
+    pub agent_id: SkillDeployAgent,
+    /// Central skill identity.
+    pub skill_id: String,
+    /// Absolute Agent configuration root from the preview.
+    pub config_root: String,
+    /// Library revision the user reviewed.
+    pub expected_skill_revision: i64,
+    /// Absolute target path the preview reported.
+    pub reviewed_target_path: String,
+    /// Target classification the preview reported.
+    pub reviewed_target_state: SkillDeployTargetState,
+    /// Mode to write; the interface normally keeps the recorded mode.
+    pub mode: SkillDeployMode,
+}
+
+/// Batch target classification: the single-preview states plus `unreadable`
+/// for a target the batch could not inspect (the single preview reports
+/// that as an error instead).
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
+#[serde(rename_all = "snake_case")]
+pub enum AgentSkillTargetState {
+    /// No file or directory at the target path.
+    Absent,
+    /// Vibemate-owned symlink to the current managed copy.
+    OwnedSymlink,
+    /// Vibemate-owned directory copy of the managed content.
+    OwnedCopy,
+    /// An unmanaged or drifted path occupies the target.
+    Foreign,
+    /// The target could not be read; nothing may be written there blindly.
+    Unreadable,
+}
+
+impl From<SkillDeployTargetState> for AgentSkillTargetState {
+    fn from(state: SkillDeployTargetState) -> Self {
+        match state {
+            SkillDeployTargetState::Absent => Self::Absent,
+            SkillDeployTargetState::OwnedSymlink => Self::OwnedSymlink,
+            SkillDeployTargetState::OwnedCopy => Self::OwnedCopy,
+            SkillDeployTargetState::Foreign => Self::Foreign,
+        }
+    }
+}
+
+/// Read-only target classification for one library skill at one Agent root.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct AgentSkillTarget {
+    /// Central skill identity.
+    pub skill_id: String,
+    /// What currently occupies the target path.
+    pub target_state: AgentSkillTargetState,
+    /// Absolute target path under `<config_root>/skills/<name>/`.
+    pub target_path: String,
+    /// Whether this process can create directory symlinks (cached probe).
+    pub symlink_available: bool,
+    /// Codex only, same meaning as `SkillDeployPreview::shared_duplicate_path`.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub shared_duplicate_path: Option<String>,
+}
+
 /// Result of applying a reviewed skill deployment.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
 #[serde(rename_all = "camelCase")]
@@ -683,6 +772,20 @@ pub struct SkillDeployed {
     pub mode: SkillDeployMode,
     /// Absolute target path that was created or replaced.
     pub target_path: String,
+}
+
+/// Result of a resync: the deployment plus whether user edits were replaced.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct SkillResynced {
+    /// The rewritten deployment, same fields as an apply result.
+    #[serde(flatten)]
+    pub deployed: SkillDeployed,
+    /// True when an edited copy or retargeted link was replaced.
+    pub overwrote_user_changes: bool,
+    /// Private backup of the replaced content; `None` exactly when
+    /// `overwrote_user_changes` is false.
+    pub backup_path: Option<String>,
 }
 
 /// Request to revoke one vibemate-managed skill deployment.

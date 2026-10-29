@@ -86,5 +86,10 @@ pub fn preview_pi_registration(
         PiMcpPreflightError::InvalidConfig => InvalidConfig,
         PiMcpPreflightError::NameConflict => NameConflict,
     })?;
+    let mut proposal = proposal;
+    // Display-only copy: the writer uses the preflight entry, never this one.
+    if let Some(map) = proposal.redacted_entry.as_object_mut() {
+        crate::secret_text::mask_public_fields(map);
+    }
     Ok(PiMcpPreview { target, proposal })
 }

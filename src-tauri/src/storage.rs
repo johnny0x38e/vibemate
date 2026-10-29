@@ -777,6 +777,148 @@ const MIGRATIONS: &[Migration] = &[
         CREATE UNIQUE INDEX claude_mcp_one_pending_root ON claude_mcp_change(config_root) WHERE state='prepared';
         CREATE INDEX claude_mcp_history ON claude_mcp_change(config_root,definition_id,created_at DESC,id DESC);",
     },
+    Migration {
+        version: 36,
+        // P41: Codex is the fourth Skill deployment target, so both Skill tables
+        // with an agent CHECK are rebuilt (rows and indexes are kept). Codex
+        // user-level `config.toml` gets two independent journals: MCP entries
+        // (mirroring Grok, exact names, native `enabled`) and provider settings
+        // (`[model_providers.<key>]` tables plus an optional owned top-level
+        // default). Provider bindings carry no FK, like Pi/Grok bindings: an
+        // Agent file can outlive a central row, and deletion is guarded in Rust.
+        sql: "CREATE TABLE skill_deployment_v36 (
+            skill_id TEXT NOT NULL REFERENCES skill(id) ON DELETE RESTRICT,
+            agent_id TEXT NOT NULL CHECK(agent_id IN ('pi','grokBuild','claudeCode','codex')),
+            config_root TEXT NOT NULL CHECK(length(config_root) BETWEEN 1 AND 4096),
+            target_name TEXT NOT NULL CHECK(length(target_name) BETWEEN 1 AND 64),
+            mode TEXT NOT NULL CHECK(mode IN ('symlink','copy')),
+            skill_revision INTEGER NOT NULL CHECK(skill_revision >= 1),
+            content_digest TEXT NOT NULL
+                CHECK(length(content_digest)=64 AND content_digest NOT GLOB '*[^0-9a-f]*'),
+            deployed_at INTEGER NOT NULL CHECK(deployed_at >= 0),
+            PRIMARY KEY(agent_id, config_root, target_name),
+            UNIQUE(skill_id, agent_id, config_root)
+        ) STRICT, WITHOUT ROWID;
+        INSERT INTO skill_deployment_v36
+            SELECT skill_id, agent_id, config_root, target_name, mode,
+                   skill_revision, content_digest, deployed_at
+            FROM skill_deployment;
+        DROP TABLE skill_deployment;
+        ALTER TABLE skill_deployment_v36 RENAME TO skill_deployment;
+        CREATE TABLE skill_deploy_operation_v36 (
+            id TEXT PRIMARY KEY CHECK(length(id)=32 AND id NOT GLOB '*[^0-9a-f]*'),
+            kind TEXT NOT NULL CHECK(kind IN ('apply','disable')),
+            state TEXT NOT NULL CHECK(state IN ('prepared','unknown')),
+            skill_id TEXT NOT NULL CHECK(length(skill_id)=32 AND skill_id NOT GLOB '*[^0-9a-f]*'),
+            agent_id TEXT NOT NULL CHECK(agent_id IN ('pi','grokBuild','claudeCode','codex')),
+            config_root TEXT NOT NULL CHECK(length(config_root) BETWEEN 1 AND 4096),
+            target_name TEXT NOT NULL CHECK(length(target_name) BETWEEN 1 AND 64),
+            target_path TEXT NOT NULL CHECK(length(target_path) BETWEEN 1 AND 4096),
+            mode TEXT CHECK(mode IS NULL OR mode IN ('symlink','copy')),
+            skill_revision INTEGER NOT NULL CHECK(skill_revision >= 1),
+            content_digest TEXT NOT NULL
+                CHECK(length(content_digest)=64 AND content_digest NOT GLOB '*[^0-9a-f]*'),
+            created_at INTEGER NOT NULL CHECK(created_at >= 0),
+            updated_at INTEGER NOT NULL CHECK(updated_at >= 0)
+        ) STRICT;
+        INSERT INTO skill_deploy_operation_v36
+            SELECT id, kind, state, skill_id, agent_id, config_root, target_name,
+                   target_path, mode, skill_revision, content_digest, created_at, updated_at
+            FROM skill_deploy_operation;
+        DROP TABLE skill_deploy_operation;
+        ALTER TABLE skill_deploy_operation_v36 RENAME TO skill_deploy_operation;
+        CREATE INDEX skill_deploy_operation_skill
+            ON skill_deploy_operation(skill_id);
+        CREATE INDEX skill_deploy_operation_list
+            ON skill_deploy_operation(created_at ASC, id ASC);
+        CREATE TABLE codex_mcp_deployment (
+            config_root TEXT NOT NULL CHECK(length(config_root) BETWEEN 1 AND 4096),
+            definition_id TEXT NOT NULL REFERENCES mcp_definition(id) ON DELETE RESTRICT,
+            server_name TEXT NOT NULL CHECK(length(server_name) BETWEEN 1 AND 64),
+            definition_revision INTEGER NOT NULL CHECK(definition_revision>=1),
+            entry_digest TEXT NOT NULL CHECK(length(entry_digest)=64 AND entry_digest NOT GLOB '*[^0-9a-f]*'),
+            generation TEXT NOT NULL CHECK(length(generation)=32 AND generation NOT GLOB '*[^0-9a-f]*'),
+            enabled INTEGER NOT NULL CHECK(enabled IN (0,1)),
+            PRIMARY KEY(config_root,definition_id),
+            UNIQUE(config_root,server_name)
+        ) STRICT, WITHOUT ROWID;
+        CREATE TABLE codex_mcp_change (
+            id TEXT PRIMARY KEY CHECK(length(id)=32 AND id NOT GLOB '*[^0-9a-f]*'),
+            config_root TEXT NOT NULL CHECK(length(config_root) BETWEEN 1 AND 4096),
+            definition_id TEXT NOT NULL CHECK(length(definition_id)=32),
+            server_name TEXT NOT NULL CHECK(length(server_name) BETWEEN 1 AND 64),
+            definition_revision INTEGER NOT NULL CHECK(definition_revision>=1),
+            action TEXT NOT NULL CHECK(action IN ('deploy','enable','disable','revoke','restore')),
+            state TEXT NOT NULL CHECK(state IN ('prepared','completed','aborted')),
+            before_digest TEXT CHECK(before_digest IS NULL OR length(before_digest)=64),
+            intended_digest TEXT CHECK(intended_digest IS NULL OR length(intended_digest)=64),
+            before_owner TEXT CHECK(before_owner IS NULL OR json_valid(before_owner)),
+            after_owner TEXT CHECK(after_owner IS NULL OR json_valid(after_owner)),
+            operation_id TEXT REFERENCES config_operation(id) ON DELETE RESTRICT,
+            created_at INTEGER NOT NULL CHECK(created_at>=0)
+        ) STRICT;
+        CREATE UNIQUE INDEX codex_mcp_one_pending_root ON codex_mcp_change(config_root) WHERE state='prepared';
+        CREATE INDEX codex_mcp_history ON codex_mcp_change(config_root,definition_id,created_at DESC,id DESC);
+        CREATE TABLE codex_provider_binding (
+            config_root TEXT NOT NULL CHECK(length(config_root) BETWEEN 1 AND 4096),
+            provider_id TEXT NOT NULL CHECK(length(provider_id)=32 AND provider_id NOT GLOB '*[^0-9a-f]*'),
+            provider_key TEXT NOT NULL CHECK(length(provider_key) BETWEEN 1 AND 64),
+            provider_revision INTEGER NOT NULL CHECK(provider_revision>=1),
+            entry_digest TEXT NOT NULL CHECK(length(entry_digest)=64 AND entry_digest NOT GLOB '*[^0-9a-f]*'),
+            generation TEXT NOT NULL CHECK(length(generation)=32 AND generation NOT GLOB '*[^0-9a-f]*'),
+            PRIMARY KEY(config_root,provider_id),
+            UNIQUE(config_root,provider_key)
+        ) STRICT, WITHOUT ROWID;
+        CREATE TABLE codex_default_binding (
+            config_root TEXT PRIMARY KEY CHECK(length(config_root) BETWEEN 1 AND 4096),
+            provider_id TEXT NOT NULL CHECK(length(provider_id)=32 AND provider_id NOT GLOB '*[^0-9a-f]*'),
+            model_id TEXT NOT NULL CHECK(length(model_id) BETWEEN 1 AND 160),
+            provider_key TEXT NOT NULL CHECK(length(provider_key) BETWEEN 1 AND 64),
+            entry_digest TEXT NOT NULL CHECK(length(entry_digest)=64 AND entry_digest NOT GLOB '*[^0-9a-f]*'),
+            previous TEXT NOT NULL CHECK(json_valid(previous)),
+            generation TEXT NOT NULL CHECK(length(generation)=32 AND generation NOT GLOB '*[^0-9a-f]*')
+        ) STRICT, WITHOUT ROWID;
+        CREATE TABLE codex_settings_change (
+            id TEXT PRIMARY KEY CHECK(length(id)=32 AND id NOT GLOB '*[^0-9a-f]*'),
+            config_root TEXT NOT NULL CHECK(length(config_root) BETWEEN 1 AND 4096),
+            provider_id TEXT NOT NULL CHECK(length(provider_id)=32 AND provider_id NOT GLOB '*[^0-9a-f]*'),
+            provider_key TEXT NOT NULL CHECK(length(provider_key) BETWEEN 1 AND 64),
+            action TEXT NOT NULL CHECK(action IN ('deploy','revoke','set_default','clear_default')),
+            state TEXT NOT NULL CHECK(state IN ('prepared','completed','aborted')),
+            before_digest TEXT CHECK(before_digest IS NULL OR length(before_digest)=64),
+            intended_digest TEXT CHECK(intended_digest IS NULL OR length(intended_digest)=64),
+            before_owner TEXT NOT NULL CHECK(json_valid(before_owner)),
+            after_owner TEXT NOT NULL CHECK(json_valid(after_owner)),
+            operation_id TEXT REFERENCES config_operation(id) ON DELETE RESTRICT,
+            created_at INTEGER NOT NULL CHECK(created_at>=0)
+        ) STRICT;
+        CREATE UNIQUE INDEX codex_settings_one_pending_root ON codex_settings_change(config_root) WHERE state='prepared';
+        CREATE INDEX codex_settings_history ON codex_settings_change(config_root,provider_id,created_at DESC,id DESC);",
+    },
+    Migration {
+        version: 37,
+        // Codex settings history names the model a default change involved.
+        // A separate version keeps databases that already applied v36 valid.
+        // Existing rows are backfilled from the recorded ownership snapshots:
+        // `set_default` from the default it published, `clear_default` from the
+        // default it released; `deploy`/`revoke` involve no model (NULL).
+        sql: "ALTER TABLE codex_settings_change ADD COLUMN model_id TEXT
+            CHECK(model_id IS NULL OR length(model_id) BETWEEN 1 AND 160);
+        UPDATE codex_settings_change SET model_id = CASE action
+            WHEN 'set_default' THEN json_extract(after_owner, '$.default.modelId')
+            WHEN 'clear_default' THEN json_extract(before_owner, '$.default.modelId')
+            ELSE NULL
+        END;",
+    },
+    Migration {
+        version: 38,
+        // Whether an owned Codex default wrote `model_reasoning_effort`. Since
+        // this version vibemate writes the effort only when the central model
+        // states one and leaves a user's value alone otherwise. Earlier
+        // defaults always set or removed the effort, so existing rows own it.
+        sql: "ALTER TABLE codex_default_binding ADD COLUMN writes_effort INTEGER NOT NULL
+            DEFAULT 1 CHECK(writes_effort IN (0,1));",
+    },
 ];
 
 /// Errors from opening or migrating the private database.

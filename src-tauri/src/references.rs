@@ -10,6 +10,11 @@
 //! - `unverified` when the file cannot be read or parsed, so deletion stays
 //!   blocked rather than guessing.
 //!
+//! Codex rows are listed separately as [`CodexReference`] (the owned table,
+//! the owned default or a pending change). They are never clearable here: the
+//! Codex settings panel revokes or clears them, and a pending change is
+//! resolved by its recovery.
+//!
 //! This module only reads Agent files. Clearing a binding removes vibemate's
 //! ownership row; it never rewrites user or Agent content.
 
@@ -48,6 +53,38 @@ pub struct AgentReference {
     pub state: ReferenceState,
     /// True only for a stale binding that this build can clear.
     pub clearable: bool,
+}
+
+/// One owned Codex row that blocks deleting a central Provider or model.
+/// Released only from Codex settings (revoke / clear default) or recovery.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct CodexReference {
+    /// Absolute `$CODEX_HOME` recorded with the row.
+    pub config_root: String,
+    /// `vibemate-…` key under `[model_providers]`.
+    pub provider_key: String,
+    /// Model of the owned default or of a pending default change, else null.
+    pub model_id: Option<String>,
+    /// Which owned Codex state this row is.
+    pub binding: CodexBindingKind,
+    /// `active` when the owned key is still in `config.toml`, `stale` when it
+    /// is gone, `unverified` when unreadable or for a pending change.
+    pub state: ReferenceState,
+}
+
+/// Which owned Codex state blocks deleting a central record.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
+#[serde(rename_all = "snake_case")]
+pub enum CodexBindingKind {
+    /// `[model_providers.<label>]` written by vibemate; revoke it in Codex
+    /// settings.
+    Provider,
+    /// Top-level `model`/`model_provider` written by "set as default"; clear
+    /// the default in Codex settings.
+    Default,
+    /// An interrupted Codex settings change awaiting recovery.
+    Pending,
 }
 
 /// Safe failures while reading binding rows or Agent files.
@@ -97,13 +134,7 @@ pub(crate) fn provider_references(
             clearable: state == ReferenceState::Stale,
         });
     }
-    references.sort_by(|left, right| {
-        (&left.agent_id, &left.config_root, &left.label).cmp(&(
-            &right.agent_id,
-            &right.config_root,
-            &right.label,
-        ))
-    });
+    sort(&mut references);
     Ok(references)
 }
 
@@ -143,6 +174,11 @@ pub(crate) fn model_references(
             });
         }
     }
+    sort(&mut references);
+    Ok(references)
+}
+
+fn sort(references: &mut [AgentReference]) {
     references.sort_by(|left, right| {
         (&left.agent_id, &left.config_root, &left.label).cmp(&(
             &right.agent_id,
@@ -150,7 +186,114 @@ pub(crate) fn model_references(
             &right.label,
         ))
     });
+}
+
+/// Codex rows exactly as counted by [`provider_has_bindings`] (no model) or
+/// [`model_has_bindings`] (with a model): owned tables, the owned default and
+/// pending changes for a Provider; only the owned default for a model.
+pub(crate) fn codex_references(
+    storage: &Storage,
+    provider_id: &str,
+    model_id: Option<&str>,
+) -> Result<Vec<CodexReference>, ReferenceReadError> {
+    type Row = (String, String, Option<String>, CodexBindingKind);
+    let rows: Vec<Row> = {
+        let connection = storage
+            .lock()
+            .map_err(|_| ReferenceReadError::StorageUnavailable)?;
+        let mut rows = Vec::new();
+        let mut collect = |sql: &str, kind: CodexBindingKind| {
+            let mut statement = connection
+                .prepare(sql)
+                .map_err(|_| ReferenceReadError::ReadFailed)?;
+            let mapped = statement
+                .query_map(params![provider_id, model_id], |row| {
+                    Ok((row.get(0)?, row.get(1)?, row.get(2)?, kind))
+                })
+                .map_err(|_| ReferenceReadError::ReadFailed)?;
+            for row in mapped {
+                rows.push(row.map_err(|_| ReferenceReadError::ReadFailed)?);
+            }
+            Ok::<(), ReferenceReadError>(())
+        };
+        collect(
+            "SELECT config_root, provider_key, model_id FROM codex_default_binding
+             WHERE provider_id=?1 AND (?2 IS NULL OR model_id=?2)",
+            CodexBindingKind::Default,
+        )?;
+        if model_id.is_none() {
+            collect(
+                "SELECT config_root, provider_key, NULL FROM codex_provider_binding
+                 WHERE provider_id=?1 AND ?2 IS NULL",
+                CodexBindingKind::Provider,
+            )?;
+            collect(
+                "SELECT config_root, provider_key, model_id FROM codex_settings_change
+                 WHERE provider_id=?1 AND ?2 IS NULL AND state='prepared'",
+                CodexBindingKind::Pending,
+            )?;
+        }
+        rows
+    };
+    let mut references: Vec<CodexReference> = rows
+        .into_iter()
+        .map(|(config_root, provider_key, model_id, binding)| {
+            let state = codex_state(Path::new(&config_root), &provider_key, binding);
+            CodexReference {
+                config_root,
+                provider_key,
+                model_id,
+                binding,
+                state,
+            }
+        })
+        .collect();
+    references.sort_by(|left, right| {
+        (&left.config_root, left.binding as u8, &left.provider_key).cmp(&(
+            &right.config_root,
+            right.binding as u8,
+            &right.provider_key,
+        ))
+    });
     Ok(references)
+}
+
+/// Live state of one Codex row. A pending change is never proven settled, so
+/// it is `unverified` until its recovery runs. A symlinked or unparsable
+/// `config.toml` is `unverified` as well.
+fn codex_state(root: &Path, provider_key: &str, kind: CodexBindingKind) -> ReferenceState {
+    if kind == CodexBindingKind::Pending {
+        return ReferenceState::Unverified;
+    }
+    let document = match read_target_bytes(&root.join("config.toml")) {
+        Ok((target, _)) if target.symlink => return ReferenceState::Unverified,
+        Ok((target, _)) if !target.exists => return ReferenceState::Stale,
+        Ok((_, bytes)) => match std::str::from_utf8(&bytes)
+            .ok()
+            .and_then(|text| text.parse::<DocumentMut>().ok())
+        {
+            Some(document) => document,
+            None => return ReferenceState::Unverified,
+        },
+        Err(_) => return ReferenceState::Unverified,
+    };
+    let present = match kind {
+        CodexBindingKind::Provider => document
+            .get("model_providers")
+            .and_then(|providers| providers.get(provider_key))
+            .is_some(),
+        _ => {
+            document
+                .get("model_provider")
+                .and_then(|value| value.as_str())
+                == Some(provider_key)
+        }
+    };
+    if present {
+        ReferenceState::Active
+    } else {
+        ReferenceState::Stale
+    }
 }
 
 /// Count Claude Code remembered starting choices that will be removed by the
@@ -180,7 +323,8 @@ pub(crate) fn remembered_preferences(
     Ok(count.max(0) as u64)
 }
 
-/// Whether any Pi/Grok binding row still names this Provider.
+/// Whether any Pi/Grok/Codex binding row (or a pending Codex change) still names
+/// this Provider.
 pub(crate) fn provider_has_bindings(
     storage: &Storage,
     provider_id: &str,
@@ -192,7 +336,11 @@ pub(crate) fn provider_has_bindings(
         .query_row(
             "SELECT
                 (SELECT COUNT(*) FROM pi_provider_binding WHERE provider_id=?1) +
-                (SELECT COUNT(*) FROM grok_model_binding WHERE provider_id=?1)",
+                (SELECT COUNT(*) FROM grok_model_binding WHERE provider_id=?1) +
+                (SELECT COUNT(*) FROM codex_provider_binding WHERE provider_id=?1) +
+                (SELECT COUNT(*) FROM codex_default_binding WHERE provider_id=?1) +
+                (SELECT COUNT(*) FROM codex_settings_change
+                 WHERE provider_id=?1 AND state='prepared')",
             [provider_id],
             |row| row.get(0),
         )
@@ -200,7 +348,8 @@ pub(crate) fn provider_has_bindings(
     Ok(count > 0)
 }
 
-/// Whether a Grok alias row still names this Provider/model pair.
+/// Whether a Grok alias row or the owned Codex default still names this
+/// Provider/model pair.
 pub(crate) fn model_has_bindings(
     storage: &Storage,
     provider_id: &str,
@@ -211,8 +360,11 @@ pub(crate) fn model_has_bindings(
         .map_err(|_| ReferenceReadError::StorageUnavailable)?;
     let count: i64 = connection
         .query_row(
-            "SELECT COUNT(*) FROM grok_model_binding
-             WHERE provider_id=?1 AND model_id=?2",
+            "SELECT
+                (SELECT COUNT(*) FROM grok_model_binding
+                 WHERE provider_id=?1 AND model_id=?2) +
+                (SELECT COUNT(*) FROM codex_default_binding
+                 WHERE provider_id=?1 AND model_id=?2)",
             params![provider_id, model_id],
             |row| row.get(0),
         )

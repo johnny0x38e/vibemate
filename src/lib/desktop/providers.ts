@@ -132,10 +132,42 @@ export interface AgentReference {
     clearable: boolean;
 }
 
+/**
+ * Which owned Codex state blocks a deletion:
+ * - `provider`: the owned `[model_providers.<providerKey>]` table; revoke it
+ *   in Codex settings;
+ * - `default`: the owned top-level default (`modelId` is its model); clear the
+ *   default in Codex settings;
+ * - `pending`: an interrupted Codex settings change; resolve its recovery.
+ */
+export type CodexBindingKind = "provider" | "default" | "pending";
+
+/** One owned Codex row that blocks deleting a central Provider or model. */
+export interface CodexReference {
+    /** Absolute `$CODEX_HOME` recorded with the row. */
+    configRoot: string;
+    /** `vibemate-…` key under `[model_providers]`. */
+    providerKey: string;
+    /** Model of the owned default or a pending default change, else null. */
+    modelId: string | null;
+    binding: CodexBindingKind;
+    /**
+     * `active` while the owned key is in `config.toml`, `stale` once it is
+     * gone, `unverified` when unreadable and always for `pending`. Never
+     * clearable from the delete dialog, whatever the state.
+     */
+    state: AgentReferenceState;
+}
+
 /** Agent references and remembered choices affected by a Provider deletion. */
 export interface ProviderDeletionImpact {
     providerId: string;
     references: AgentReference[];
+    /**
+     * Codex rows that block deletion. The wrapper always sets it (`[]` when
+     * none); optional only so existing mocks keep type-checking.
+     */
+    codexReferences?: CodexReference[];
     /** Claude Code remembered choices removed by the same transaction. */
     rememberedPreferences: number;
     /** True only when no binding row blocks deletion. */
@@ -598,6 +630,53 @@ function reference(value: unknown): AgentReference {
     };
 }
 
+const CODEX_BINDINGS = ["provider", "default", "pending"] as const;
+const CODEX_REFERENCE_KEYS = [
+    "configRoot",
+    "providerKey",
+    "modelId",
+    "binding",
+    "state",
+] as const;
+
+function codexReference(value: unknown): CodexReference {
+    if (
+        !isObject(value) ||
+        !hasExactKeys(value, CODEX_REFERENCE_KEYS) ||
+        typeof value["configRoot"] !== "string" ||
+        value["configRoot"].trim() === "" ||
+        typeof value["providerKey"] !== "string" ||
+        !/^vibemate-[a-z0-9-]{1,60}$/u.test(value["providerKey"]) ||
+        (value["modelId"] !== null &&
+            (typeof value["modelId"] !== "string" ||
+                value["modelId"] === "")) ||
+        (value["binding"] === "provider" && value["modelId"] !== null) ||
+        (value["binding"] === "default" && value["modelId"] === null)
+    ) {
+        throw invalidResponse();
+    }
+    const binding = CODEX_BINDINGS.find((kind) => kind === value["binding"]);
+    const state = referenceState(value["state"]);
+    if (
+        binding === undefined ||
+        (binding === "pending" && state !== "unverified")
+    )
+        throw invalidResponse();
+    return {
+        configRoot: value["configRoot"],
+        providerKey: value["providerKey"],
+        modelId: value["modelId"],
+        binding,
+        state,
+    };
+}
+
+/** Validate the Codex rows of a deletion impact. */
+export function codexReferences(value: unknown): CodexReference[] {
+    if (!Array.isArray(value)) throw invalidResponse();
+    return value.map(codexReference);
+}
+
 /** Validate a bounded list of Agent ownership references from Rust. */
 export function agentReferences(value: unknown): AgentReference[] {
     if (!Array.isArray(value)) throw invalidResponse();
@@ -618,6 +697,7 @@ export async function providerDeletionImpact(
         !hasExactKeys(data, [
             "providerId",
             "references",
+            "codexReferences",
             "rememberedPreferences",
             "canDelete",
         ]) ||
@@ -629,9 +709,15 @@ export async function providerDeletionImpact(
     ) {
         throw invalidResponse();
     }
+    const references = agentReferences(data["references"]);
+    const codex = codexReferences(data["codexReferences"]);
+    // Every listed row blocks deletion.
+    if (data["canDelete"] && (references.length > 0 || codex.length > 0))
+        throw invalidResponse();
     return {
         providerId,
-        references: agentReferences(data["references"]),
+        references,
+        codexReferences: codex,
         rememberedPreferences: data["rememberedPreferences"],
         canDelete: data["canDelete"],
     };

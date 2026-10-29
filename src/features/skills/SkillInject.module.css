@@ -1,0 +1,197 @@
+/*
+ * Skill inject rows. Layout mirrors the MCP inject card (Mcp.module.css
+ * `.inject*`): leading mark, name, right-rail status, then icon actions.
+ * Colors come only from theme tokens; labels use --color-summary and values
+ * --color-text through textHierarchy.module.css.
+ */
+
+.list {
+    display: grid;
+    margin: 0;
+    padding: 0;
+    list-style: none;
+}
+
+.block {
+    display: grid;
+    gap: var(--space-sm);
+    padding: var(--space-sm) 0;
+    border-bottom: 1px solid var(--color-border);
+}
+
+.block:last-child {
+    border-bottom: 0;
+}
+
+.row {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: var(--space-sm);
+    min-width: 0;
+}
+
+.chrome {
+    display: flex;
+    align-items: center;
+    flex: 1;
+    gap: var(--space-sm);
+    min-width: 0;
+}
+
+/* Same optical inset for Pi's mark as the MCP inject rows. */
+.chrome :global(img[data-agent="pi"]) {
+    width: 72%;
+    height: 72%;
+}
+
+.chromeText {
+    display: grid;
+    flex: 1;
+    min-width: 0;
+    gap: 2px;
+}
+
+.name {
+    margin: 0;
+    font-size: 0.8125rem;
+    font-weight: 500;
+    line-height: 1.35;
+    overflow-wrap: anywhere;
+}
+
+.note {
+    margin: 0;
+    font-size: 0.6875rem;
+    line-height: 1.4;
+    overflow-wrap: anywhere;
+}
+
+.status {
+    flex: 0 0 auto;
+    margin: 0;
+    font-size: 0.8125rem;
+    line-height: 1.35;
+    text-align: end;
+    white-space: nowrap;
+}
+
+.status[data-state="injected"] {
+    color: var(--color-success-fg);
+}
+
+.status[data-state="not_injected"] {
+    color: var(--color-danger-fg);
+}
+
+.status[data-state="needs_sync"] {
+    color: var(--color-chip-info-fg);
+}
+
+.status[data-state="unreadable"] {
+    color: var(--color-danger-fg);
+}
+
+.status[data-state="occupied"],
+.status[data-state="loading"],
+.status[data-state="unchecked"] {
+    color: var(--color-summary);
+}
+
+/* Expanded facts: label in the secondary color, value in the primary color. */
+.facts {
+    display: grid;
+    gap: 4px;
+    margin: 0;
+    padding-inline-start: calc(var(--space-sm) + 28px);
+    font-size: 0.75rem;
+    line-height: 1.45;
+}
+
+.fact {
+    display: flex;
+    flex-wrap: wrap;
+    gap: var(--space-sm);
+    min-width: 0;
+}
+
+.fact dt,
+.fact dd {
+    margin: 0;
+}
+
+.fact dd {
+    min-width: 0;
+    overflow-wrap: anywhere;
+}
+
+.error {
+    margin: 0;
+    color: var(--color-danger-fg);
+    font-size: 0.8125rem;
+    line-height: 1.45;
+}
+
+.panelHint {
+    margin: 0;
+    color: var(--color-summary);
+    font-size: 0.75rem;
+    line-height: 1.6;
+    overflow-wrap: anywhere;
+}
+
+/* Unobtrusive Advanced disclosure under the rows. */
+.advanced {
+    margin-top: var(--space-sm);
+    font-size: 0.8125rem;
+}
+
+.advanced > summary {
+    display: inline-flex;
+    padding: 4px var(--space-sm);
+    border-radius: var(--radius-control);
+    color: var(--color-summary);
+    cursor: pointer;
+}
+
+.advanced > summary:hover {
+    background: var(--color-hover);
+}
+
+.advanced > summary:focus-visible {
+    outline: 2px solid var(--color-focus);
+    outline-offset: 2px;
+}
+
+.advancedBody {
+    display: grid;
+    gap: var(--space-sm);
+    padding: var(--space-sm) 0 0;
+}
+
+.advancedRow {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    justify-content: space-between;
+    gap: var(--space-sm);
+}
+
+.agentPanel {
+    display: grid;
+    gap: var(--space-sm);
+    width: 100%;
+}
+
+.agentActions {
+    display: flex;
+    flex-wrap: wrap;
+    gap: var(--space-sm);
+}
+
+/* Skills list: a skill injected nowhere says so quietly, without a chip. */
+.countNone {
+    color: var(--color-summary);
+    font-size: 0.8125rem;
+    white-space: nowrap;
+}

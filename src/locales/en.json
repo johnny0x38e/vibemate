@@ -430,6 +430,19 @@
             "secret_outcome_unknown": "vibemate could not confirm whether the key was replaced; the system credential store may already hold the new key. Refresh the key status and replace it again if unsure.",
             "delete_outcome_unknown": "Deletion unconfirmed. Refresh the list to check.",
             "provider_in_use": "An Agent configuration still references this provider. Resolve the listed bindings before deleting."
+        },
+        "codexReferences": {
+            "label": "Codex bindings",
+            "names": {
+                "provider": "Codex · provider {{key}}",
+                "default": "Codex · default model {{model}} · provider {{key}}",
+                "pending": "Codex · unfinished settings change · provider {{key}}"
+            },
+            "hints": {
+                "provider": "Revoke it in Agents › Codex › Settings first.",
+                "default": "Clear the Codex default in Agents › Codex › Settings first.",
+                "pending": "Resolve the interrupted change in Agents › Codex › Settings first."
+            }
         }
     },
     "mcp": {
@@ -708,7 +721,9 @@
                 "registeredSummary": "Grok Build registration recorded",
                 "summaryUnknown": "Grok Build registration not checked",
                 "deleteReference": "Grok Build reference: {{path}} · {{state}}. Revoke it before deleting this definition.",
-                "resolveReferences": "Manage Grok Build references"
+                "resolveReferences": "Manage Grok Build references",
+                "unmanagedKeys": "Keys added in Grok that vibemate doesn't manage: {{keys}}.",
+                "modifiedLocked": "This entry was changed outside vibemate, so vibemate won't update, enable, disable, revoke or restore it. Undo the change in the Grok config file to manage it here again."
             },
             "actions": {
                 "deploy": "Deploy/update",
@@ -883,7 +898,105 @@
             "refresh": "Refresh registration status · {{agent}} · {{name}}",
             "register": "Register with {{agent}} · {{name}}",
             "history": "{{agent}} registration history · {{name}}",
-            "historyTitle": "{{agent}} registration history · {{name}}"
+            "historyTitle": "{{agent}} registration history · {{name}}",
+            "codex": "Codex"
+        },
+        "codex": {
+            "manage": {
+                "open": "Manage Codex · {{name}}",
+                "title": "Codex registration · {{name}}",
+                "review": "Reviewed entry change",
+                "action": "Action",
+                "removed": "Entry removed",
+                "preserve": "Only this [mcp_servers] entry in the user-level config.toml changes. Other servers, profiles and model settings are preserved. Existing user entries and externally modified managed entries are never adopted or overwritten.",
+                "credentials": "Deploy/update resolves saved values in Rust. Codex reads them as plaintext from its private config.toml; backups and retained result copies can also contain them. Values stay masked here. Dynamic ${…} values are refused.",
+                "historicalCredentials": "Restoring this result can bring back old plaintext credentials. It restores this entry only, not unrelated servers or the entire historical file.",
+                "entryOnly": "Before and after for this entry only. Environment/header values are masked; unrelated native content is not included.",
+                "registration": "Current Codex registration",
+                "diskState": "Observed disk state",
+                "revision": "Definition revision",
+                "revisionValue": "Written {{written}} · central {{central}}",
+                "otherRoot": "Also registered under {{path}}. Switch CODEX_HOME and revoke there before deleting the central definition.",
+                "update": "Review update",
+                "deploy": "Review deployment",
+                "confirm": "Confirm file change",
+                "cancelReview": "Back to registration",
+                "refresh": "Refresh registration",
+                "loading": "Reading Codex registration and history…",
+                "writing": "Applying the reviewed change…",
+                "written": "Change written. Start a new Codex session to load it; registration is not proof of an effective or connected server.",
+                "recorded": "Observation recorded. No native file was rewritten.",
+                "registeredSummary": "Codex registration recorded",
+                "summaryUnknown": "Codex registration not checked",
+                "deleteReference": "Codex reference: {{path}} · {{state}}. Revoke it before deleting this definition.",
+                "resolveReferences": "Manage Codex references",
+                "modifiedLocked": "This entry was changed in Codex, so vibemate won't update, enable, disable, revoke or restore it. Undo the change in config.toml to manage it here again.",
+                "unmanagedKeys": "Keys added in Codex that vibemate doesn't manage: {{keys}}."
+            },
+            "actions": {
+                "deploy": "Deploy/update",
+                "enable": "Enable in Codex",
+                "disable": "Disable in Codex",
+                "revoke": "Revoke from Codex",
+                "restore": "Restore entry"
+            },
+            "states": {
+                "written": "Matches the managed entry",
+                "modified": "Changed outside vibemate",
+                "missing": "Managed entry missing",
+                "unreadable": "Native state unavailable",
+                "unregistered": "Not registered in this Codex directory",
+                "manuallyDisabled": "Manually disabled in Codex"
+            },
+            "history": {
+                "title": "Entry history",
+                "empty": "No retained changes in this Codex directory.",
+                "restoreLabel": "Review entry result {{id}}"
+            },
+            "recovery": {
+                "title": "Interrupted Codex change",
+                "pending": "An interrupted change for {{name}} blocks further Codex writes. Review its disk observation in Codex registration management.",
+                "review": "Review interruption",
+                "confirm": "Confirm observed state",
+                "noReplay": "This only reconciles the operation journal and ownership. It does not replay the interrupted write or contact a server.",
+                "before": "The file matches the recorded before-state. Confirming abandons the pending intent and preserves the previous ownership.",
+                "intended": "The file matches the intended result. Confirming verifies retained copies and completes its journal and ownership.",
+                "conflict": "The file matches neither recorded state. Nothing will be replayed. Resolve the external changes, then refresh; do not delete the pending record.",
+                "unreadable": "The file cannot be safely observed. Check its path, type and permissions, then refresh."
+            },
+            "errors": {
+                "invalid_request": "Invalid Codex selection. Reload the definitions and try again.",
+                "storage_unavailable": "Local storage is unavailable. Restart vibemate and inspect the registration before retrying.",
+                "definition_changed": "The central definition changed or is unavailable. Reload definitions before reviewing again.",
+                "target_unavailable": "The Codex target cannot be safely changed. Check CODEX_HOME, permissions, size and file type. Symbolic links are not replaced.",
+                "invalid_config": "The existing config.toml or its [mcp_servers] table is invalid. Fix it outside vibemate, then refresh; nothing was replaced.",
+                "name_conflict": "An existing user entry owns this exact server name. vibemate will not adopt or overwrite it.",
+                "ownership_conflict": "The managed entry changed, disappeared or has a different name. Restore its exact managed contents first, or explicitly revoke a missing entry. For a renamed central identifier, revoke the old registration before deploying again.",
+                "plan_stale": "The reviewed state changed. Refresh and review the action again before confirming.",
+                "credential_unavailable": "Saved OS values are unavailable or cannot be written as literal Codex values. Unlock the credential store or replace the central values, then review again.",
+                "recovery_required": "An interrupted Codex change needs explicit reconciliation. Refresh and review its observed state before any further writes.",
+                "snapshot_unavailable": "A required result copy is missing, corrupt or outside this definition/directory. Restore/recovery remains blocked; no fallback to another operation's backup is allowed.",
+                "write_failed": "The writer did not confirm a successful change. Refresh the registration and check any pending interruption before retrying.",
+                "outcome_unknown": "The result is uncertain. Refresh the registration and inspect any interrupted change; do not blindly repeat the write.",
+                "definition_in_use": "This definition still has a Codex registration or pending change. Reconcile and revoke its references first.",
+                "unsupported_server_name": "Codex cannot use this server name. Use letters, digits and _ - : @ / . only, up to 64 characters.",
+                "dynamic_value_unsupported": "A public field contains ${…} interpolation. Only literal fields are supported for Codex.",
+                "path_semantics_unverified": "Relative working directories and leading ~/ paths are not yet verified for Codex. Use an absolute working directory and literal executable/arguments, or omit the working directory.",
+                "desktop_required": "Use the vibemate desktop app to manage real Codex registrations.",
+                "invalid_response": "The response was discarded because it could not be validated. Refresh to inspect the actual result before retrying."
+            }
+        },
+        "codexPreview": {
+            "target": "Target file",
+            "enabled": "Native enabled flag",
+            "on": "true — not proof of runtime enablement",
+            "off": "false — definition would be retained",
+            "loading": "Reading the Codex target…",
+            "reload": "Reload definitions",
+            "details": "View entry details",
+            "detailsTitle": "Codex MCP entry details",
+            "close": "Close",
+            "unmanagedKeys": "Keys vibemate does not manage are kept as they are: {{keys}}."
         }
     },
     "agents": {
@@ -1491,12 +1604,11 @@
             "providerModel": "{{provider}} · {{model}}"
         },
         "skillPanel": {
-            "empty": "No vibemate-managed skills are deployed to this agent directory yet. Deploy from the Skills module.",
+            "empty": "The skill library is empty. Add skills in the Skills module, then inject them here.",
             "unsupported": "Skill deployment for this agent is not implemented yet.",
-            "loading": "Reading skill deployments…",
-            "desktopRequired": "Skill deployment status needs the desktop app.",
-            "listLabel": "Deployed skills",
-            "rowSummary": "{{name}} · {{mode}} · {{sync}}",
+            "loading": "Reading skills…",
+            "desktopRequired": "Injecting skills needs the desktop app.",
+            "listLabel": "Library skills",
             "openSkills": "Open Skills"
         },
         "mcpPanel": {
@@ -1512,11 +1624,123 @@
             "listLabelClaude": "Managed Claude Code MCP registrations",
             "row": "{{name}} · {{state}} · {{enabled}}",
             "rowClaude": "{{name}} · {{state}}",
-            "openMcp": "Open MCP management"
+            "openMcp": "Open MCP management",
+            "readOnlyCodex": "Read-only user-level Codex registrations in config.toml, not a live connection check. Start a new Codex session after a write; a profile or project config may override these entries.",
+            "emptyCodex": "No managed Codex MCP entries in this user-level config.",
+            "listLabelCodex": "Managed Codex MCP registrations"
         },
         "writeDialog": {
             "title": "Write · {{name}}",
             "close": "Close"
+        },
+        "codex": {
+            "loading": "Loading Codex settings…",
+            "reload": "Reload Codex settings",
+            "profileActive": "A Codex profile is active in config.toml. Its values override the default model and provider written here.",
+            "actions": {
+                "deploy": "Add provider",
+                "revoke": "Remove provider",
+                "set_default": "Set as Codex default",
+                "clear_default": "Clear Codex default"
+            },
+            "form": {
+                "title": "Codex provider",
+                "provider": "Provider",
+                "model": "Model",
+                "setDefault": "Set as Codex default",
+                "setDefaultHint": "Also make this provider and model the default for new Codex sessions.",
+                "review": "Review changes",
+                "upToDate": "This provider is already in config.toml and nothing else would change.",
+                "modelRequired": "Choose a model to set it as the Codex default.",
+                "noProviders": "No saved providers yet. Add one in Providers first.",
+                "providersFailed": "Couldn't load saved providers.",
+                "noModels": "No selected models for this provider",
+                "modelsFailed": "Couldn't load models"
+            },
+            "binding": {
+                "title": "Codex providers",
+                "listLabel": "Providers vibemate added to Codex",
+                "target": "File",
+                "default": "Default",
+                "noDefault": "Not set by vibemate",
+                "defaultOwn": "Own configuration (changed in Codex)",
+                "empty": "vibemate has not added any provider to Codex yet.",
+                "written": "Written by vibemate",
+                "outdated": "Provider changed since it was written; write again to update",
+                "own": "Own configuration (changed or removed outside vibemate)",
+                "unreadable": "Couldn't read this entry",
+                "isDefault": "Codex default",
+                "revoke": "Remove {{name}} from Codex",
+                "clearDefault": "Clear {{name}} as the Codex default",
+                "defaultMissing": "Removed from config.toml (Codex uses its own default)",
+                "defaultReleasable": "Codex default changed outside vibemate",
+                "releaseDefault": "Stop managing {{name}} as the Codex default (config.toml won't change)"
+            },
+            "review": {
+                "title": "Review Codex change",
+                "step": "Step {{index}} of {{total}}",
+                "loading": "Preparing review…",
+                "applying": "Writing config.toml…",
+                "refreshed": "config.toml or the provider changed after the review. This is a fresh review; check it again before confirming.",
+                "action": "Change",
+                "providerKey": "Provider key",
+                "model": "Model",
+                "newFile": "config.toml will be created",
+                "noWrite": "config.toml already matches; confirming only records the change.",
+                "cancel": "Cancel",
+                "confirm": "Confirm and write",
+                "confirmRecord": "Confirm"
+            },
+            "notices": {
+                "plaintext_credential": "Codex reads the API key from config.toml, so it will be stored there in plain text. Anyone who can read this file can use the key.",
+                "profile_overrides_default": "An active Codex profile overrides this default.",
+                "release_only": "Only vibemate's record is released; config.toml is not changed."
+            },
+            "done": {
+                "restart": "Written. Start a new Codex session to use it.",
+                "noChange": "Recorded. config.toml did not need to change.",
+                "recovered": "The interrupted change was confirmed."
+            },
+            "recovery": {
+                "title": "Interrupted Codex change",
+                "before": "\"{{action}}\" for {{provider}} was interrupted before it wrote config.toml.",
+                "intended": "\"{{action}}\" for {{provider}} was interrupted after config.toml was written.",
+                "conflict": "\"{{action}}\" for {{provider}} was interrupted and config.toml changed since. Check the file yourself.",
+                "unreadable": "\"{{action}}\" for {{provider}} was interrupted and config.toml can't be read.",
+                "manual": "This can't be confirmed from vibemate. Fix config.toml, then reload.",
+                "review": "Review interrupted change",
+                "reviewTitle": "Confirm interrupted change",
+                "confirmHint": "Record the current state of config.toml for \"{{action}}\" ({{provider}}). Nothing is written again.",
+                "confirm": "Confirm"
+            },
+            "history": {
+                "title": "Codex change history",
+                "empty": "No Codex changes yet.",
+                "unavailable": "Couldn't load Codex change history.",
+                "entry": "{{action}} · {{provider}}",
+                "entryModel": "{{action}} · {{provider}} · {{model}}"
+            },
+            "errors": {
+                "invalid_request": "This change request isn't valid.",
+                "storage_unavailable": "vibemate's local storage is unavailable.",
+                "provider_changed": "The provider changed since it was loaded. Reload and review again.",
+                "target_unavailable": "Codex config.toml can't be reached.",
+                "invalid_config": "Codex config.toml isn't valid TOML. Fix it, then try again.",
+                "name_conflict": "config.toml already has a provider with this name that vibemate didn't add.",
+                "ownership_conflict": "This entry in config.toml was changed outside vibemate, so it is your own configuration now.",
+                "plan_stale": "config.toml changed after the review. Review again.",
+                "credential_unavailable": "The provider's API key couldn't be read.",
+                "recovery_required": "An interrupted Codex change must be resolved first.",
+                "write_failed": "Couldn't write config.toml.",
+                "outcome_unknown": "The result of the change is unknown. Reload to check config.toml.",
+                "protocol_unsupported": "Codex only supports providers with the OpenAI Responses API.",
+                "base_url_unverified": "The provider's base URL hasn't been verified.",
+                "model_unsupported": "This model isn't available for Codex on this provider.",
+                "default_in_use": "This provider is the Codex default. Clear the default before removing it.",
+                "not_deployed": "Add this provider to Codex before setting it as the default.",
+                "desktop_required": "Codex settings are available in the desktop app.",
+                "invalid_response": "Codex settings returned an unexpected response."
+            }
         }
     },
     "skills": {
@@ -1575,7 +1799,7 @@
         "sourceSaved": "Source saved.",
         "reload": "Reload list",
         "reloadUnknown": "The result is unknown. Reload the list before another change.",
-        "notDeployed": "Open a skill's detail page to deploy it to Claude Code, Pi or Grok Build.",
+        "notDeployed": "Open a skill to inject it into Claude Code, Pi or Grok Build.",
         "recovery": {
             "title": "Unfinished skill deployments",
             "description": "These operations were interrupted before ownership and the filesystem agreed. Finish repairs ownership only; Dismiss clears the journal without rewriting agent files.",
@@ -1603,34 +1827,68 @@
             }
         },
         "deploy": {
-            "title": "Deploy to an agent",
-            "agent": "Agent",
-            "loading": "Checking the agent skills directory…",
-            "desktopRequired": "Deploying a skill needs the desktop app.",
-            "target": "Target path",
-            "targetState": "Target status",
-            "mode": "Link mode",
-            "modeSymlink": "Symbolic link",
-            "modeCopy": "Copy",
-            "symlinkUnavailable": "This system cannot create a directory symlink here. Choose copy to continue.",
-            "foreignHint": "A path that vibemate does not manage already occupies this name. It will not be overwritten.",
-            "apply": "Deploy",
-            "applying": "Deploying…",
-            "none": "Not deployed to any supported agent yet.",
-            "listLabel": "Current deployments",
             "agentPi": "Pi",
             "agentGrokBuild": "Grok Build",
             "agentClaudeCode": "Claude Code",
-            "rowSummary": "{{agent}} · {{mode}} · revision {{revision}} · {{sync}}",
-            "inSync": "in sync",
-            "outOfSync": "changed outside vibemate",
-            "disable": "Remove deployment",
-            "states": {
-                "absent": "Empty — ready to deploy",
-                "owned_symlink": "vibemate symlink",
-                "owned_copy": "vibemate copy",
-                "foreign": "Unmanaged content"
-            }
+            "referenceRow": "{{agent}} · {{status}}",
+            "agentCodex": "Codex"
+        },
+        "inject": {
+            "title": "Agent injection",
+            "listLabel": "Agents",
+            "rowLabel": "{{agent}} · {{name}}",
+            "desktopRequired": "Injecting a skill needs the desktop app.",
+            "status": {
+                "loading": "Checking…",
+                "unchecked": "Not checked",
+                "not_injected": "Not injected",
+                "injected": "Injected",
+                "needs_sync": "Needs sync",
+                "occupied": "Occupied",
+                "unreadable": "Can't read target"
+            },
+            "inject": "Inject {{name}} into {{agent}}",
+            "remove": "Remove {{name}} from {{agent}}",
+            "resync": "Resync {{name}} in {{agent}}",
+            "resyncUnavailable": "Resync {{name}} in {{agent}} is unavailable until the target can be read",
+            "progress": {
+                "inject": "Injecting…",
+                "remove": "Removing…",
+                "resync": "Resyncing…"
+            },
+            "details": "Show details for {{name}}",
+            "location": "Location",
+            "method": "Method",
+            "methodSymlink": "Linked to the library",
+            "methodCopy": "Copied files",
+            "occupiedNote": "A folder vibemate does not manage already uses this name. It is left untouched.",
+            "needsSyncNote": "The placed files no longer match the library. Resync restores them.",
+            "resyncUnavailableNote": "The placed target couldn't be read, so it can't be resynced right now. Reload, or remove the injection to stop managing it.",
+            "advanced": "Advanced",
+            "linkMethod": "Link method",
+            "linkAuto": "Automatic (link when possible)",
+            "linkCopy": "Always copy files",
+            "linkHint": "Linking keeps the Agent on the library version. Copying writes separate files the Agent can use without the library.",
+            "removeTitle": "Remove from {{agent}}?",
+            "removeBody": "{{name}} will no longer be available in {{agent}}. The skill stays in your library.",
+            "removeChangedNote": "The files were edited outside vibemate, so they are left in place; vibemate only stops managing them.",
+            "removeConfirm": "Remove",
+            "removeCancel": "Cancel",
+            "injectedAgents_one": "Injected into {{count}} agent",
+            "injectedAgents_other": "Injected into {{count}} agents",
+            "notInjectedAnywhere": "Not injected",
+            "sharedDuplicateNote": "A skill with the same name already exists in ~/.agents/skills ({{path}}). Codex loads both folders and lists same-named skills separately; they are not merged.",
+            "resyncEditedNote": "The placed files were edited outside vibemate. Resync replaces them with the library version (the edited files are backed up first); Remove keeps them and stops managing them.",
+            "unreadableNote": "vibemate couldn't read what is at this skill's target, so it won't inject here. Check the folder's permissions, then reload.",
+            "targetReadFailed": "Can't read the injected copy in the Agent folder. Check the folder's permissions, then try again.",
+            "resyncTitle": "Resync in {{agent}}?",
+            "resyncBody": "{{name}} in {{agent}} will be rewritten from the library version.",
+            "resyncOverwrite": "This overwrites your changes in {{path}}. They are backed up to {{backupDir}} first.",
+            "resyncOverwriteNoDir": "This overwrites your changes in {{path}}. They are backed up in vibemate's app data first.",
+            "resyncConfirm": "Resync",
+            "resyncConfirmOverwrite": "Back up and overwrite",
+            "resyncBackedUp": "Resynced in {{agent}}. Your changes were backed up to {{path}}.",
+            "resyncBackedUpSkill": "Resynced {{name}}. Your changes were backed up to {{path}}."
         },
         "sourceTitle": "Skill source",
         "urlLabel": "Source address",

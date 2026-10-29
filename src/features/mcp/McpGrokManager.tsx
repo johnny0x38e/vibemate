@@ -4,6 +4,7 @@ import { useTranslation } from "react-i18next";
 import { DetailFact, DetailPanel } from "../../components/DetailForm";
 import type { McpRecord } from "../../lib/desktop/mcp";
 import { GrokMcpReview } from "./GrokMcpReview";
+import { managedMcpRowLocked } from "./mcpRowLock";
 import { useGrokMcpManager } from "./useGrokMcpManager";
 import buttons from "../../components/actionButtons.module.css";
 import dialog from "./McpDeleteDialog.module.css";
@@ -57,6 +58,8 @@ export function McpGrokManager({
     const registerStarted = useRef(false);
     const data = read.kind === "ready" ? read : null;
     const actionsLocked = locked;
+    // A hand-edited entry is refused by Rust; disable its actions up front.
+    const rowLocked = managedMcpRowLocked(current);
     // Register from detail: jump straight into deploy review once ready.
     useEffect(() => {
         if (intent !== "register" || registerStarted.current) return;
@@ -163,6 +166,24 @@ export function McpGrokManager({
                                         />
                                     )}
                                 </DetailPanel>
+                                {current !== undefined &&
+                                    current.unmanagedKeys.length > 0 && (
+                                        <p className={styles["notice"]}>
+                                            {t(
+                                                "mcp.grok.manage.unmanagedKeys",
+                                                {
+                                                    keys: current.unmanagedKeys.join(
+                                                        ", ",
+                                                    ),
+                                                },
+                                            )}
+                                        </p>
+                                    )}
+                                {rowLocked && (
+                                    <p className={styles["notice"]} role="note">
+                                        {t("mcp.grok.manage.modifiedLocked")}
+                                    </p>
+                                )}
                                 {data.state.deployments
                                     .filter(
                                         (row) =>
@@ -220,7 +241,9 @@ export function McpGrokManager({
                                             type="button"
                                             className={buttons["primary"]}
                                             disabled={
-                                                actionsLocked || !!pending
+                                                actionsLocked ||
+                                                !!pending ||
+                                                rowLocked
                                             }
                                             onClick={() => {
                                                 void review("deploy");
@@ -241,7 +264,8 @@ export function McpGrokManager({
                                                     }
                                                     disabled={
                                                         actionsLocked ||
-                                                        !!pending
+                                                        !!pending ||
+                                                        rowLocked
                                                     }
                                                     onClick={() => {
                                                         void review(
@@ -266,7 +290,8 @@ export function McpGrokManager({
                                                     }
                                                     disabled={
                                                         actionsLocked ||
-                                                        !!pending
+                                                        !!pending ||
+                                                        rowLocked
                                                     }
                                                     onClick={() => {
                                                         void review("revoke");
@@ -320,7 +345,8 @@ export function McpGrokManager({
                                                     }
                                                     disabled={
                                                         actionsLocked ||
-                                                        !!pending
+                                                        !!pending ||
+                                                        rowLocked
                                                     }
                                                     aria-label={t(
                                                         "mcp.grok.history.restoreLabel",

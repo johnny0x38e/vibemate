@@ -3,6 +3,7 @@
 //! the launched program can have side effects outside vibemate's control.
 
 pub(crate) mod claude_code;
+pub mod codex;
 mod configuration;
 pub mod grok_build;
 pub mod history;
@@ -45,6 +46,9 @@ pub struct ApplyClaudeCodeSettingsRequest {
 
 /// Claude Code settings root, shared by discovery and the configuration preview.
 pub(crate) use discovery::claude_config_root;
+/// Codex user state root (`CODEX_HOME` or `~/.codex`), shared by discovery,
+/// provider/MCP writes and skill deployment.
+pub(crate) use discovery::codex_config_root;
 pub use discovery::discover_agents;
 /// Grok Build root (`GROK_HOME` or `~/.grok`), shared by configuration writes
 /// and skill deployment.

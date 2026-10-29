@@ -394,7 +394,9 @@ pub(super) fn commit_definition_delete(
             OR EXISTS(SELECT 1 FROM grok_mcp_deployment WHERE definition_id=?1)
             OR EXISTS(SELECT 1 FROM grok_mcp_change WHERE definition_id=?1 AND state='prepared')
             OR EXISTS(SELECT 1 FROM claude_mcp_deployment WHERE definition_id=?1)
-            OR EXISTS(SELECT 1 FROM claude_mcp_change WHERE definition_id=?1 AND state='prepared')",
+            OR EXISTS(SELECT 1 FROM claude_mcp_change WHERE definition_id=?1 AND state='prepared')
+            OR EXISTS(SELECT 1 FROM codex_mcp_deployment WHERE definition_id=?1)
+            OR EXISTS(SELECT 1 FROM codex_mcp_change WHERE definition_id=?1 AND state='prepared')",
             [&request.id],
             |row| row.get(0),
         )

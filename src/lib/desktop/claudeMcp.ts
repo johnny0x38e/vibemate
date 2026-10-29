@@ -129,10 +129,10 @@ const capabilities = z.strictObject({
 });
 /** Fixed adapter capabilities; `toggle` is always false. */
 export type ClaudeMcpCapabilities = z.infer<typeof capabilities>;
+/** Ownership metadata; the entry digest stays in Rust (it hashes secrets). */
 const ownership = z.strictObject({
     serverName,
     definitionRevision: revision,
-    entryDigest: digest,
     generation: id,
 });
 const deployment = z.strictObject({

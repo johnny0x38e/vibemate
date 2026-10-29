@@ -1,7 +1,7 @@
 # Configuration writes, history and restore
 
 This page describes the shared mechanism every Agent write uses: Claude Code,
-Pi and Grok Build today, and any later adapter. Protocol details per Agent live
+Pi, Grok Build and Codex today, and any later adapter. Protocol details per Agent live
 in [`integrations/`](integrations); the Agent catalog is in
 [`agents.md`](agents.md).
 
@@ -63,6 +63,22 @@ explicit.
 
 Applying stays blocked until the field summary has loaded. A stale detail read or
 a stale restore is refused with `plan_stale` and writes nothing.
+
+## Codex writes
+
+Codex model settings (`OperationKind::CodexSettings`) and Codex MCP entries
+(`OperationKind::CodexMcp`) both write the user-level
+`$CODEX_HOME/config.toml` through the same private writer: approval digest,
+`plan_stale` on any change, `.config-lock`, private backup, journal, atomic
+rename. Unlike the mode-preserving rule above, these private writes set an
+existing `config.toml` to 0600 as well, because it can hold plain-text keys.
+Each keeps its own durable change table, and a
+pending change in either one blocks writes from the other to the same root.
+Codex is not part of `configuration_history_page` or whole-version restore:
+the Codex settings panel shows a read-only, newest-first list of completed
+changes, MCP history restores only the selected entry, and interrupted changes
+are resolved by an explicit review that never replays a write. Field details
+are in [`integrations/codex.md`](integrations/codex.md).
 
 ## Write journal
 

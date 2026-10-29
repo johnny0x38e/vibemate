@@ -7,8 +7,10 @@
 - Providers: Command Code, DeepSeek and OpenRouter.
 - Fixed Agent catalog and read-only discovery: Claude Code, Codex, OpenCode, Pi,
   Grok Build and Nous Research Hermes Agent. All six detectors are implemented.
-  Configuration deployment exists for Claude Code, Pi and Grok Build; the
-  maintainer edits code in Pi daily, so Pi is never the first write target.
+  Configuration deployment exists for Claude Code, Pi, Grok Build and Codex
+  (Codex: user-level Provider, optional default model, MCP and Skills; awaiting
+  review fixes and maintainer acceptance); the maintainer edits code in Pi
+  daily, so Pi is never the first write target.
 - Shared skills with source/revision tracking and updates; shared MCP definitions
   and explicit per-Agent deployment.
 - Simplified Chinese/English UI with system detection and persistent choice.

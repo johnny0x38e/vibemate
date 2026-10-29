@@ -17,6 +17,11 @@ import {
     readClaudeMcpState,
     type ClaudeMcpErrorCode,
 } from "../../lib/desktop/claudeMcp";
+import {
+    CodexMcpError,
+    readCodexMcpState,
+    type CodexMcpErrorCode,
+} from "../../lib/desktop/codexMcp";
 import type { AgentId } from "../../lib/desktop/agents";
 import type { McpRecord } from "../../lib/desktop/mcp";
 import {
@@ -26,15 +31,16 @@ import {
 } from "./McpInjectAgentChrome";
 import styles from "./Mcp.module.css";
 
-export type McpInjectAgent = "pi" | "grok" | "claude";
+export type McpInjectAgent = "pi" | "grok" | "claude" | "codex";
 
 // Each Agent keeps its own error-code type so `t()` keys are never unioned
-// across Pi/Grok/Claude namespaces.
+// across Pi/Grok/Claude/Codex namespaces.
 type RowRead =
     | { kind: "loading" }
     | { kind: "error"; agent: "pi"; code: PiMcpErrorCode }
     | { kind: "error"; agent: "grok"; code: GrokMcpErrorCode }
     | { kind: "error"; agent: "claude"; code: ClaudeMcpErrorCode }
+    | { kind: "error"; agent: "codex"; code: CodexMcpErrorCode }
     | { kind: "ready"; registered: boolean; targetPath: string };
 
 /** Fixed per-Agent chrome: icon id, visible name key and manager title key. */
@@ -53,6 +59,11 @@ const AGENT_CHROME = {
         icon: "claudeCode",
         name: "mcp.inject.claude",
         title: "mcp.claude.manage.title",
+    },
+    codex: {
+        icon: "codex",
+        name: "mcp.inject.codex",
+        title: "mcp.codex.manage.title",
     },
 } as const satisfies Record<
     McpInjectAgent,
@@ -88,7 +99,9 @@ export function McpInjectRow({
                 ? readPiMcpState(record.id)
                 : agent === "grok"
                   ? readGrokMcpState(record.id)
-                  : readClaudeMcpState(record.id);
+                  : agent === "codex"
+                    ? readCodexMcpState(record.id)
+                    : readClaudeMcpState(record.id);
         void load.then(
             (state) => {
                 if (generation.current !== token) return;
@@ -109,6 +122,17 @@ export function McpInjectRow({
                         agent: "pi",
                         code:
                             error instanceof PiMcpError
+                                ? error.code
+                                : "outcome_unknown",
+                    });
+                    return;
+                }
+                if (agent === "codex") {
+                    setRead({
+                        kind: "error",
+                        agent: "codex",
+                        code:
+                            error instanceof CodexMcpError
                                 ? error.code
                                 : "outcome_unknown",
                     });
@@ -233,6 +257,11 @@ export function McpInjectRow({
             {read.kind === "error" && read.agent === "claude" && (
                 <p role="alert" className={styles["injectRowError"]}>
                     {t(`mcp.claude.errors.${read.code}`)}
+                </p>
+            )}
+            {read.kind === "error" && read.agent === "codex" && (
+                <p role="alert" className={styles["injectRowError"]}>
+                    {t(`mcp.codex.errors.${read.code}`)}
                 </p>
             )}
         </section>

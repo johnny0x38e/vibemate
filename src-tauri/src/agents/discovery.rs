@@ -90,6 +90,33 @@ pub(crate) fn grok_config_root(
     )
 }
 
+/// Codex user state root: `CODEX_HOME` when non-empty, then `<home>/.codex`.
+///
+/// Codex ignores an empty CODEX_HOME, but rejects an explicit directory that
+/// does not exist and canonicalizes one that does. Keep that distinction
+/// without reading config. Discovery and Codex writers share this function.
+pub(crate) fn codex_config_root(
+    environment: &DiscoveryEnvironment,
+) -> (Option<PathBuf>, DirectorySource) {
+    let override_path = environment
+        .codex_directory
+        .as_ref()
+        .filter(|p| !p.is_empty());
+    let (root, source) = config_directory(&environment.home, override_path, ".codex");
+    if override_path.is_some() {
+        let resolved = root
+            .filter(|p| fs::metadata(p).is_ok_and(|m| m.is_dir()))
+            .and_then(|p| fs::canonicalize(p).ok())
+            .filter(|p| display_path(p).is_some());
+        match resolved {
+            Some(root) => (Some(root), source),
+            None => (None, DirectorySource::Unavailable),
+        }
+    } else {
+        (root, source)
+    }
+}
+
 fn file_state(path: &Path) -> FileState {
     match fs::metadata(path) {
         Ok(metadata) if metadata.is_file() => FileState::Present,
@@ -255,27 +282,7 @@ pub(super) fn configuration_directory(
 ) -> (Option<PathBuf>, DirectorySource) {
     match id {
         AgentId::ClaudeCode => claude_config_root(environment),
-        AgentId::Codex => {
-            // Codex ignores an empty CODEX_HOME, but rejects an explicit directory
-            // that does not exist. Keep that distinction without reading config.
-            let override_path = environment
-                .codex_directory
-                .as_ref()
-                .filter(|p| !p.is_empty());
-            let (root, source) = config_directory(&environment.home, override_path, ".codex");
-            if override_path.is_some() {
-                let resolved = root
-                    .filter(|p| fs::metadata(p).is_ok_and(|m| m.is_dir()))
-                    .and_then(|p| fs::canonicalize(p).ok())
-                    .filter(|p| display_path(p).is_some());
-                match resolved {
-                    Some(root) => (Some(root), source),
-                    None => (None, DirectorySource::Unavailable),
-                }
-            } else {
-                (root, source)
-            }
-        }
+        AgentId::Codex => codex_config_root(environment),
         AgentId::OpenCode => {
             // This is a candidate config root, not a claim about effective config.
             // OPENCODE_CONFIG_DIR differs between v1 and v2; file/inline/project

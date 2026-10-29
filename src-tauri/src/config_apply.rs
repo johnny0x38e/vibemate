@@ -234,6 +234,14 @@ pub enum OperationKind {
     /// Claude Code user-scope MCP entries in `.claude.json` (top-level
     /// `mcpServers` only), journaled apart from `settings.json` model links.
     ClaudeMcp,
+    /// Codex user-level `[model_providers.*]` tables and the optional owned
+    /// top-level default (`model` + `model_provider`, plus
+    /// `model_reasoning_effort` when the central model states one) in
+    /// `config.toml`.
+    CodexSettings,
+    /// Codex user-level `[mcp_servers.*]` entries in `config.toml`, journaled
+    /// apart from provider tables.
+    CodexMcp,
 }
 
 impl OperationKind {
@@ -246,6 +254,8 @@ impl OperationKind {
             Self::GrokSettings => "grok_settings",
             Self::GrokMcp => "grok_mcp",
             Self::ClaudeMcp => "claude_mcp",
+            Self::CodexSettings => "codex_settings",
+            Self::CodexMcp => "codex_mcp",
         }
     }
 
@@ -258,6 +268,8 @@ impl OperationKind {
             "grok_settings" => Some(Self::GrokSettings),
             "grok_mcp" => Some(Self::GrokMcp),
             "claude_mcp" => Some(Self::ClaudeMcp),
+            "codex_settings" => Some(Self::CodexSettings),
+            "codex_mcp" => Some(Self::CodexMcp),
             _ => None,
         }
     }

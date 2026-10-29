@@ -4,6 +4,8 @@ import type { AgentId } from "../../lib/desktop/agents";
 import { usePiMcpRegistrations } from "../mcp/usePiMcpRegistrations";
 import { useGrokMcpRegistrations } from "../mcp/useGrokMcpRegistrations";
 import { useClaudeMcpRegistrations } from "../mcp/useClaudeMcpRegistrations";
+import { useCodexMcpRegistrations } from "../mcp/useCodexMcpRegistrations";
+import { codexMcpEnabled, codexMcpStateKey } from "../mcp/codexMcpRow";
 import buttons from "../../components/actionButtons.module.css";
 import styles from "./AgentList.module.css";
 
@@ -31,10 +33,81 @@ export function AgentMcpPanel({
         hidden || agentId !== "claudeCode",
         epoch,
     );
+    const codex = useCodexMcpRegistrations(
+        hidden || agentId !== "codex",
+        epoch,
+    );
     const result = agentId === "grokBuild" ? grok : pi;
     return (
         <div className={styles["skillPanel"]}>
-            {claudeSupported ? (
+            {agentId === "codex" ? (
+                // Codex user-level config.toml: registration plus enabled flag.
+                <>
+                    <p className={styles["hint"]}>
+                        {t("agents.mcpPanel.readOnlyCodex")}
+                    </p>
+                    {codex.kind === "loading" && (
+                        <p role="status">{t("mcp.codex.manage.loading")}</p>
+                    )}
+                    {codex.kind === "error" && (
+                        <p role="alert">
+                            {t(`mcp.codex.errors.${codex.code}`)}
+                        </p>
+                    )}
+                    {codex.kind === "ready" && (
+                        <>
+                            {codex.value.recovery && (
+                                <p role="status">
+                                    {t("mcp.codex.recovery.pending", {
+                                        name: codex.value.recovery.serverName,
+                                    })}
+                                </p>
+                            )}
+                            {codex.value.deployments.length === 0 ? (
+                                <p>{t("agents.mcpPanel.emptyCodex")}</p>
+                            ) : (
+                                <ul
+                                    className={styles["skillDeployList"]}
+                                    aria-label={t(
+                                        "agents.mcpPanel.listLabelCodex",
+                                    )}
+                                >
+                                    {codex.value.deployments.map((row) => (
+                                        <li key={row.definitionId}>
+                                            <p
+                                                className={
+                                                    styles["skillDeployRow"]
+                                                }
+                                            >
+                                                {t("agents.mcpPanel.row", {
+                                                    name: row.displayName,
+                                                    state: t(
+                                                        codexMcpStateKey(row),
+                                                    ),
+                                                    enabled: t(
+                                                        codexMcpEnabled(row)
+                                                            ? "mcp.codexPreview.on"
+                                                            : "mcp.codexPreview.off",
+                                                    ),
+                                                })}
+                                            </p>
+                                        </li>
+                                    ))}
+                                </ul>
+                            )}
+                        </>
+                    )}
+                    <button
+                        type="button"
+                        className={buttons["secondary"]}
+                        onClick={() => {
+                            setEpoch((value) => value + 1);
+                        }}
+                    >
+                        {t("mcp.codex.manage.refresh")}
+                    </button>
+                </>
+            ) : claudeSupported ? (
                 // Claude Code user scope: registration only, no enable flag.
                 <>
                     <p className={styles["hint"]}>

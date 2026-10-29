@@ -715,3 +715,53 @@ test("manual writes block browsing and late hidden replies do not add rows", asy
         ).toBeNull();
     });
 });
+
+test("a Codex default on a removed model blocks the save and says where to clear it", async () => {
+    list.mockResolvedValue(desktopPage([model()]));
+    impact.mockResolvedValue({
+        providerId: ID,
+        modelId: "deepseek-chat",
+        references: [],
+        codexReferences: [
+            {
+                configRoot: "/home/test/.codex",
+                providerKey: "vibemate-deep-seek",
+                modelId: "deepseek-chat",
+                binding: "default",
+                state: "active",
+            },
+        ],
+        rememberedPreferences: 0,
+        canDelete: false,
+    });
+    await renderModels();
+    fireEvent.click(
+        await screen.findByRole("checkbox", {
+            name: "Deselect deepseek-chat",
+        }),
+    );
+    fireEvent.click(screen.getByRole("button", { name: "Save" }));
+    const panel = await screen.findByRole("region", {
+        name: "Agent references blocking removal",
+    });
+    expect(
+        within(panel).getByText(
+            "Codex · default model deepseek-chat · provider vibemate-deep-seek",
+        ),
+    ).toBeDefined();
+    expect(
+        within(panel).getByText(
+            "/home/test/.codex · still present in the Agent file",
+        ),
+    ).toBeDefined();
+    expect(
+        within(panel).getByText(
+            "Clear the Codex default in Agents › Codex › Settings first.",
+        ),
+    ).toBeDefined();
+    // Codex rows are never cleared from here.
+    expect(
+        within(panel).queryByRole("button", { name: "Clear reference" }),
+    ).toBeNull();
+    expect(saveSelections).not.toHaveBeenCalled();
+});

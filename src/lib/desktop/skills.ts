@@ -990,7 +990,7 @@ export type SkillDeployMode = "symlink" | "copy";
 export type SkillDeployTargetState =
     "absent" | "owned_symlink" | "owned_copy" | "foreign";
 /** Agents that accept central skill deployment in this build. */
-export type SkillDeployAgent = "pi" | "grokBuild" | "claudeCode";
+export type SkillDeployAgent = "pi" | "grokBuild" | "claudeCode" | "codex";
 /** Preview of deploying one skill into an Agent user skills directory. */
 export interface SkillDeployPreview {
     agentId: SkillDeployAgent;
@@ -1005,6 +1005,27 @@ export interface SkillDeployPreview {
     symlinkAvailable: boolean;
     suggestedMode: SkillDeployMode;
     canApply: boolean;
+    /**
+     * Codex only: a same-named entry under `~/.agents/skills` that Codex also
+     * loads, so the skill would be listed twice. Rust omits the key when there
+     * is no duplicate (it never sends `null`) and never sends it for another
+     * Agent; the parser normalizes "absent" to null. Optional only so older
+     * fixtures stay valid.
+     */
+    sharedDuplicatePath?: string | null;
+    /**
+     * True when the target is a recorded deployment edited outside vibemate,
+     * so a resync would overwrite user changes (after backing them up). Rust
+     * omits the key when false; the parser normalizes it to false. Optional
+     * only so older fixtures stay valid.
+     */
+    overwritesUserChanges?: boolean;
+    /**
+     * Private app-data folder that receives the backup when
+     * `overwritesUserChanges` is true (one timestamped subfolder per resync,
+     * newest five kept); null otherwise. Sent together with the flag.
+     */
+    backupDir?: string | null;
 }
 /** Result of applying a reviewed skill deployment. */
 export interface SkillDeployed {
@@ -1043,7 +1064,7 @@ const TARGET_STATES = [
     "owned_copy",
     "foreign",
 ] as const;
-const DEPLOY_AGENTS = ["pi", "grokBuild", "claudeCode"] as const;
+const DEPLOY_AGENTS = ["pi", "grokBuild", "claudeCode", "codex"] as const;
 
 function deployMode(value: unknown): SkillDeployMode {
     const text = string(value);
@@ -1066,21 +1087,61 @@ function targetState(value: unknown): SkillDeployTargetState {
     return known;
 }
 
+const PREVIEW_KEYS = [
+    "agentId",
+    "skillId",
+    "skillName",
+    "skillRevision",
+    "contentDigest",
+    "configRoot",
+    "targetPath",
+    "targetName",
+    "targetState",
+    "symlinkAvailable",
+    "suggestedMode",
+    "canApply",
+] as const;
+
+/**
+ * Codex-only `sharedDuplicatePath` shared by the single and batch previews:
+ * Rust omits the key when there is no duplicate (never `null`) and never sends
+ * it for another Agent. Returns null when absent.
+ */
+export function sharedDuplicate(
+    data: Record<string, unknown>,
+    agentId: unknown,
+): string | null {
+    if (!("sharedDuplicatePath" in data)) return null;
+    const path = string(data["sharedDuplicatePath"]);
+    if (agentId !== "codex" || path.trim() === "" || hasControlCharacter(path))
+        invalid();
+    return path;
+}
+
+function hasKey(value: unknown, key: string): boolean {
+    return typeof value === "object" && value !== null && key in value;
+}
+
 function deployPreview(value: unknown): SkillDeployPreview {
+    // Rust omits `sharedDuplicatePath` unless a Codex duplicate exists, and
+    // omits `overwritesUserChanges`/`backupDir` (always together) unless a
+    // resync would replace user edits.
+    const hasBackup = hasKey(value, "overwritesUserChanges");
     const data = object(value, [
-        "agentId",
-        "skillId",
-        "skillName",
-        "skillRevision",
-        "contentDigest",
-        "configRoot",
-        "targetPath",
-        "targetName",
-        "targetState",
-        "symlinkAvailable",
-        "suggestedMode",
-        "canApply",
+        ...PREVIEW_KEYS,
+        ...(hasKey(value, "sharedDuplicatePath")
+            ? ["sharedDuplicatePath"]
+            : []),
+        ...(hasBackup ? ["overwritesUserChanges", "backupDir"] : []),
     ]);
+    const sharedDuplicatePath = sharedDuplicate(data, data["agentId"]);
+    const backupDir = hasBackup ? string(data["backupDir"]) : null;
+    if (
+        (hasBackup && data["overwritesUserChanges"] !== true) ||
+        (backupDir !== null &&
+            (backupDir.trim() === "" || hasControlCharacter(backupDir)))
+    )
+        invalid();
     const skillId = string(data["skillId"]);
     const skillName = string(data["skillName"]);
     const contentDigest = string(data["contentDigest"]);
@@ -1111,6 +1172,9 @@ function deployPreview(value: unknown): SkillDeployPreview {
         symlinkAvailable: boolean(data["symlinkAvailable"]),
         suggestedMode: deployMode(data["suggestedMode"]),
         canApply: boolean(data["canApply"]),
+        sharedDuplicatePath,
+        overwritesUserChanges: hasBackup,
+        backupDir,
     };
 }
 

@@ -172,6 +172,8 @@ pub(super) fn sanitize(entry: Option<&Value>) -> Option<Value> {
                 *value = json!(SECRET_PLACEHOLDER);
             }
         }
+        // Credentials inside public fields: URL query/userinfo and `args`.
+        crate::secret_text::mask_public_fields(map);
     }
     Some(value)
 }

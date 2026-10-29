@@ -42,7 +42,8 @@ function agentLabel(
 ):
     | "skills.deploy.agentPi"
     | "skills.deploy.agentGrokBuild"
-    | "skills.deploy.agentClaudeCode" {
+    | "skills.deploy.agentClaudeCode"
+    | "skills.deploy.agentCodex" {
     switch (agentId) {
         case "pi":
             return "skills.deploy.agentPi";
@@ -50,6 +51,8 @@ function agentLabel(
             return "skills.deploy.agentGrokBuild";
         case "claudeCode":
             return "skills.deploy.agentClaudeCode";
+        case "codex":
+            return "skills.deploy.agentCodex";
     }
 }
 

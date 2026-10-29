@@ -1,6 +1,8 @@
 import { isTauri } from "@tauri-apps/api/core";
 import type { ConfigurableAgent } from "./agents";
 import { readClaudeMcpState } from "./claudeMcp";
+import { readCodexSettingsState } from "./codex";
+import { readCodexMcpState } from "./codexMcp";
 import { readGrokMcpState } from "./grokMcp";
 import { readConfigurationHistory, type HistoryEntry } from "./history";
 import { readPiMcpState } from "./piMcp";
@@ -21,7 +23,7 @@ export interface RecoverySummaryItem {
     domain: RecoveryDomain;
     destination: RecoveryDestination;
     /** Configurable Agent wire id when the domain is Agent or MCP. */
-    agentId: "claudeCode" | "pi" | "grokBuild" | null;
+    agentId: "claudeCode" | "pi" | "grokBuild" | "codex" | null;
     /** Short subject: skill name, MCP server, or operation intent. */
     subject: string;
     /** Classification / observation / path for the list line. */
@@ -146,6 +148,38 @@ export async function listRecoverySummary(): Promise<
         }
     } catch {
         // Claude Code user-scope MCP target unavailable.
+    }
+
+    try {
+        const codex = await readCodexMcpState();
+        if (codex.recovery !== null) {
+            items.push({
+                id: `mcp:codex:${codex.recovery.id}`,
+                domain: "mcp",
+                destination: "mcp",
+                agentId: "codex",
+                subject: codex.recovery.serverName,
+                detail: `${codex.recovery.action}:${codex.recovery.observation}`,
+            });
+        }
+    } catch {
+        // Codex MCP root unavailable.
+    }
+
+    try {
+        const codex = await readCodexSettingsState();
+        if (codex.recovery !== null) {
+            items.push({
+                id: `agent:codex:${codex.recovery.id}`,
+                domain: "agentConfig",
+                destination: "agents",
+                agentId: "codex",
+                subject: codex.recovery.action,
+                detail: `${codex.recovery.providerKey}:${codex.recovery.observation}`,
+            });
+        }
+    } catch {
+        // Codex provider settings unavailable.
     }
 
     return { kind: "desktop", items };

@@ -33,6 +33,7 @@ import { ModelCapabilityIcons } from "./ModelCapabilityIcons";
 import { ModelLimitMarks } from "./ModelLimitMarks";
 import { NO_CAPABILITY_DECLARATIONS } from "./modelCapabilities";
 import { ModelCheckbox } from "../../components/ModelCheckbox";
+import { CodexReferenceRows } from "./CodexReferenceRows";
 import buttons from "../../components/actionButtons.module.css";
 import editForm from "../../components/editForm.module.css";
 import styles from "./ProviderModels.module.css";
@@ -97,6 +98,14 @@ export interface ProviderModelsProps {
     onBusyChange?: (busy: boolean) => void;
     onDirtyChange?: (dirty: boolean) => void;
     onSelectedCountChange?: (count: SelectedModelCount | null) => void;
+}
+
+/** Any Agent or Codex row keeps the model from being removed. */
+function blocksRemoval(impact: ModelDeletionImpact): boolean {
+    return (
+        impact.references.length > 0 ||
+        (impact.codexReferences?.length ?? 0) > 0
+    );
 }
 
 function errorCode(error: unknown): ModelErrorCode {
@@ -639,9 +648,7 @@ export function ProviderModels({
                     modelDeletionImpact(providerId, modelId),
                 ),
             );
-            const blocking = impacts.filter(
-                (impact) => impact.references.length > 0,
-            );
+            const blocking = impacts.filter(blocksRemoval);
             if (blocking.length > 0) {
                 setBlockedRemovals(blocking);
                 setSaveState({ kind: "idle" });
@@ -701,7 +708,7 @@ export function ProviderModels({
             setBlockedRemovals((current) =>
                 current
                     .map((row) => (row.modelId === impact.modelId ? next : row))
-                    .filter((row) => row.references.length > 0),
+                    .filter(blocksRemoval),
             );
         } catch (error: unknown) {
             setReferenceError(errorCode(error));
@@ -1424,6 +1431,18 @@ export function ProviderModels({
                                 );
                             }),
                         )}
+                        {blockedRemovals.map((impact) => (
+                            <CodexReferenceRows
+                                key={`codex:${impact.modelId}`}
+                                references={impact.codexReferences ?? []}
+                                classes={{
+                                    row: styles["referenceRow"],
+                                    name: styles["referenceName"],
+                                    meta: styles["referenceMeta"],
+                                    hint: styles["referenceHint"],
+                                }}
+                            />
+                        ))}
                     </ul>
                     <p className={styles["referenceHint"]}>
                         {t("providers.models.referencesHelp")}

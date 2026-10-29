@@ -291,6 +291,42 @@ pub(crate) async fn cleanup_deleted_skill_copies(
     .map_err(|_| crate::skills::SkillError::OperationFailed)?
 }
 
+/// Sweep skill deploy leftovers once at startup on a background thread.
+///
+/// The deploy lock is taken synchronously here, during setup and before the
+/// window can send a command, and moved into the thread, so every deploy-type
+/// command (apply, resync, disable, recovery finish/dismiss, update refresh)
+/// waits until the sweep is done while read-only commands are not delayed.
+/// Failures are logged by variant name only.
+pub(crate) fn start_skill_deploy_sweep(app: &tauri::AppHandle) {
+    let guard = match crate::skills::lock_skill_deploys() {
+        Ok(guard) => guard,
+        Err(error) => {
+            log::warn!(target: "vibemate", "event=skill_deploy_sweep_failed reason={error:?}");
+            return;
+        }
+    };
+    let app = app.clone();
+    let spawned = std::thread::Builder::new()
+        .name("skill-deploy-sweep".to_owned())
+        .spawn(move || sweep_skill_deploy_leftovers(&app, &guard));
+    // On a spawn failure the closure, and with it the guard, is dropped.
+    if spawned.is_err() {
+        log::warn!(target: "vibemate", "event=skill_deploy_sweep_failed reason=thread");
+    }
+}
+
+fn sweep_skill_deploy_leftovers(app: &tauri::AppHandle, guard: &crate::skills::SkillDeployGuard) {
+    let Ok(environment) = environment(app) else {
+        return;
+    };
+    if let Err(error) = with_skill_library(app, |_library, storage| {
+        crate::skills::sweep_skill_deploy_leftovers(guard, storage, &environment)
+    }) {
+        log::warn!(target: "vibemate", "event=skill_deploy_sweep_failed reason={error:?}");
+    }
+}
+
 /// Preview deploying one central skill into a resolved Agent skills directory.
 #[tauri::command]
 pub(crate) async fn preview_skill_deploy(
@@ -322,6 +358,43 @@ pub(crate) async fn apply_skill_deploy(
             .map_err(|_| crate::skills::SkillError::OperationFailed)?;
         with_skill_library(&app, |library, storage| {
             crate::skills::apply_skill_deploy(library, storage, &environment, reviewed, now)
+        })
+    })
+    .await
+    .map_err(|_| crate::skills::SkillError::OperationFailed)?
+}
+
+/// Rewrite a recorded skill deployment whose target drifted (edited copy or
+/// retargeted link). Only targets with a vibemate ownership row are touched.
+#[tauri::command]
+pub(crate) async fn resync_skill_deploy(
+    app: tauri::AppHandle,
+    request: crate::skills::ResyncSkillDeployRequest,
+) -> Result<crate::skills::SkillResynced, crate::skills::SkillError> {
+    let environment =
+        environment(&app).map_err(|_| crate::skills::SkillError::AgentLocationUnavailable)?;
+    tauri::async_runtime::spawn_blocking(move || {
+        let now = crate::shared::current_unix_millis()
+            .map_err(|_| crate::skills::SkillError::OperationFailed)?;
+        with_skill_library(&app, |library, storage| {
+            crate::skills::resync_skill_deploy(library, storage, &environment, request, now)
+        })
+    })
+    .await
+    .map_err(|_| crate::skills::SkillError::OperationFailed)?
+}
+
+/// Classify every library skill's target at one Agent root; read-only.
+#[tauri::command]
+pub(crate) async fn preview_agent_skill_targets(
+    app: tauri::AppHandle,
+    agent_id: crate::skills::SkillDeployAgent,
+) -> Result<Vec<crate::skills::AgentSkillTarget>, crate::skills::SkillError> {
+    let environment =
+        environment(&app).map_err(|_| crate::skills::SkillError::AgentLocationUnavailable)?;
+    tauri::async_runtime::spawn_blocking(move || {
+        with_skill_library(&app, |library, storage| {
+            crate::skills::preview_agent_skill_targets(library, storage, &environment, agent_id)
         })
     })
     .await

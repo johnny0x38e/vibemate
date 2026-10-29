@@ -355,6 +355,65 @@ P24.b = Claude Code；P24.c = Pi；P24.d = Grok Build。服务商模型是唯一
 
 - [ ] P31–P33 代码已交付；P33 维护者桌面／真实连接与跨平台仍未勾选；P33.b（Claude Code 用户级 MCP）代码已完成，维护者验收待做。
 
+### Task P41: Codex 写入适配器（模型供应商 + MCP + Skills，仅用户级）
+
+**状态：** 已实现，待维护者验收（2026-10-29，schema v36–v38，未提交）。后端、Agent 列表「写入」对话框、详情 History 段的 Codex 设置面板、MCP 详情页 Codex 行、Skill 注入 Codex 行、删除引用与恢复中心均已在本机完成代码与自动化检查；审查项 S1–S6 的修复已在代码中完成（S2 推理档位见 P41.b）。接入约定见 [Codex 契约](../integrations/codex.md)，版本基准 Codex `rust-v0.165.0`（commit `360319d8`）。
+
+**Description:** 为 Codex 增加写入适配器，复用现有的可恢复写入路径（预览绑定摘要、私有 0600 备份、原子 rename、journal、版本副本、`.config-lock`、`plan_stale`、`toml_edit` 保留注释）。只写 `$CODEX_HOME/config.toml` 与 `$CODEX_HOME/skills/`，不碰任何项目级 `.codex/config.toml` 或 `.agents/skills`。Codex 0.165.0 只支持 `wire_api = "responses"`，因此只有带 Responses 端点的供应商/模型可写入。
+
+**维护者决定（2026-10-29）：**
+
+1. P41 作为独立任务，不挂在 P33 下。
+2. 密钥首版以明文写入 `experimental_bearer_token`，文件 0600；钥匙串 `auth.command` 方案后置。
+3. 只写 provider 表；另提供可选的「设为 Codex 默认」，写顶层 `model` + `model_provider`。
+4. 不写 `model_catalog_json`。
+5. 推理档位 `model_reasoning_effort` 只随「设为默认」写入，且不删除用户原有值。
+6. Skills 部署到 `$CODEX_HOME/skills`。
+7. HTTP MCP 的 Bearer 写入 `http_headers.Authorization`。
+8. `config.toml` 为符号链接时拒绝写入。
+9. DeepSeek 首批模型为 `deepseek-flash` 与 `deepseek-v4-pro`。
+10. 代理不做真实联调，由维护者自行测试。
+
+**Acceptance criteria:**
+
+- [x] **P41.a 供应商写入：** 写 `[model_providers.vibemate-<slug>]`（`name`、`base_url`、`wire_api = "responses"`、`experimental_bearer_token`；OpenRouter 另写 `supports_websockets = false`），归属记在 `codex_provider_binding`；保留 ID（openai/amazon-bedrock/amazon-bedrock-runtime/gcp/ollama/lmstudio）与无归属同名表一律 `name_conflict`；非 Responses 协议直接拒绝；Command Code 按 `supported_endpoints` 过滤；永不写顶层 `profile` 或 `[profiles.*]`、`model_catalog_json`、`env_key`、`auth`。
+- [x] **P41.b 设为 Codex 默认（可选动作）：** 写顶层 `model` + `model_provider`，归属记在 `codex_default_binding` 并保存写入前的值；清除默认只在文件仍与写入值一致时恢复，否则只释放归属；Agent 列表读取实时 `model_provider`/`model`，归属不再成立时显示「自有配置」。
+- [x] **P41.b 推理档位（审查 S2）：** 按决定 5 只在「设为默认」且中央模型声明默认档位时写 `model_reasoning_effort`；未声明时不碰用户原有值。归属记录 `writes_effort`（schema v38）；清除默认只恢复 vibemate 写过的键，且仅在这些键仍与写入值一致时恢复，否则只释放归属。
+- [x] **P41.c MCP 注入（仅用户级）：** 写 `[mcp_servers.<name>]`；stdio 映射 `command/args/env/cwd`（仅绝对路径），HTTP 映射 `url/http_headers`（Bearer 写 `http_headers.Authorization`）；不写 `bearer_token`、`env_vars`、`env_http_headers`、`http_headers_helper`、`auth`/`oauth`；`enabled` 直接映射启停；名称不合 `[A-Za-z0-9_\-:@/.]+` 或超过 64 字符时拒绝；条目摘要按语义值计算，手工停用或新增未管理键视为外部修改。
+- [x] **P41.d Skills 部署（仅用户级）：** 部署到 `$CODEX_HOME/skills/<name>/`，symlink 探测加 copy-sync，写 `skill_deployment`（`codex`）；`name`/`description` 沿用中央库导入校验；`~/.agents/skills` 中存在同名 skill 时预览给出警告。
+- [x] **P41.e 密钥：** 按决定 2 写 `experimental_bearer_token` 明文，只在确认应用时读取 OS 凭据，预览遮罩并提示明文，写入后文件为 0600；`auth.command` 方案未实现（后置）。
+- [x] 文档：新增 [`docs/integrations/codex.md`](../integrations/codex.md)；更新 `docs/agents.md` 的 Codex 行（写入适配器：Yes）、`docs/mcp.md`、`docs/skills.md`、`docs/configuration.md`。
+- [ ] 维护者在本机 `codex-cli 0.165.0` 上手工验收：写入后 `codex` 能正常启动，`codex mcp list` 能看到受管条目且 `enabled=false` 生效，`/skills` 能看到部署的 skill；DeepSeek 与 OpenRouter 各跑一次短任务（含工具调用），Command Code 至少一个支持 responses 的模型跑通。
+
+**Verification:** Rust 单元测试覆盖保留 ID 与无归属同名拒绝、`plan_stale`（模拟 Codex `/model` 与 `codex mcp add` 的并发写入）、注释与键序保留、`profile` 键从不出现、符号链接配置拒绝、缺凭据不写入、默认的设置/清除/仅释放、删除引用阻止、中断显式恢复，以及 MCP 的 stdio/HTTP、名称字符集、`cwd` 拒绝、语义摘要、手工停用、条目恢复与动态值拒绝。按决定 10 代理未做真实联调；真实 Codex、Provider 与 Windows/Linux 验收由维护者执行。
+
+**Dependencies:** P18–P21,P22–P23,P27,P28,P31,P32,P33,P33.b,P34,P35。
+
+### Task P42: 重做 Skill 注入交互（重新同步与只读预览）
+
+**状态：** 已实现，待维护者验收（2026-10-29，未提交）。代码与自动化检查已在本机完成，审查项 S3（临时目录探测）、S4（暂存/替换目录清理）、S5（备份上限、权限与确认）以及第 3 轮复审 M2（并发：单实例锁与部署锁）、M3（`read_failed` 语义与文案）的修复已在代码中完成。行为见 [skills.md](../skills.md#deploy-to-agents)。
+
+**Description:** 把 Skill 详情页的「部署到 Agent」卡片改为每个 Agent 一行的注入面板，并让 Agent 详情的 Skill 段可直接操作；新增对已漂移的受管目标重新同步；预览不再创建目录。仅用户级，覆盖 Claude Code、Pi、Grok Build 与 Codex。
+
+**Acceptance criteria:**
+
+- [x] Skill 详情页每个 Agent 一行（`SkillInjectRow`），状态为未注入/已注入/需要同步/已被占用，各有唯一主操作（注入/移除/重新同步/无）；被外部修改的放置额外提供移除。
+- [x] 链接方式自动选择，仅在折叠的「高级」中提供「自动 / 始终复制」；移除前确认，外部修改过的文件保留在原处、只停止管理。
+- [x] 重新同步（`resync_skill_deploy`）：仅在归属存在时可用，接受编辑过的副本、被改指的链接与被删除的目标，其它占用返回 `target_conflict`；替换前把漂移内容备份到 `<应用数据>/skill-deploy-backups/<agent>/<skill ID>/<ms>-<op>/<name>`，暂存后原子替换，失败可回滚或标为 `outcome_unknown`，并进入现有中断恢复。
+- [x] 预览只读：不再在 Agent 的 `skills/` 下创建目录，缺失目录报告为 `absent`；批量预览 `preview_agent_skill_targets` 按页分类全部库内技能，不写任何内容。
+- [x] Agent 详情 Skill 段（四个 Agent）列出全部库内技能并提供同样的注入/移除/重新同步；技能库卡片显示「已注入 N 个 Agent」。
+- [x] **审查 S4：** 所有临时条目都放在真实 `skills/` 目录（`skills/` 为链接时跟随到其目标）的同级 `.vibemate-staging/`：`stage-<op>`/`aside-<op>`（重新同步）、`deploy-<op>`（注入复制）、`refresh-<id>`（库更新后刷新副本）、`probe-<id>`（现场 symlink 探测）；与 `skills/` 同一文件系统但不在其中，Agent 扫描看不到。注入、重新同步与刷新前都先清理残留：`stage-/aside-/deploy-` 仅在 journal 行已不存在时删除，`refresh-` 超过 1 小时才删，`probe-` 只删链接；`skills/` 内旧版的 `.vibemate-resync-<id>`（无 journal）、`.vibemate-deploy-<skill ID>`、`.vibemate-symlink-probe`（链接）一并清理，其它名字从不触碰。
+- [x] **审查 S5：** 备份写到 `<应用数据>/skill-deploy-backups/<agent>/<skill ID>/<ms>-<op>/`，每个 Agent + Skill 只保留最新 5 份；重新同步始终先确认，会覆盖用户改动时对话框说明并给出备份位置，成功后显示备份路径。Unix 上备份各级目录为 0700、文件为 0600，早期版本留下的 0755 目录会被收紧，任一层是链接则拒绝；新建的 staging 目录为 0700；其它平台沿用默认权限。
+- [x] **启动清理：** 每次启动只在持有应用数据实例锁的进程里、于 setup 启动的后台线程执行一次，覆盖所有可解析的 Agent 根与归属/journal 记录中的根，不创建任何目录，出错只记日志；窗口不等待，部署类命令等待清理结束。
+- [x] **单实例锁：** 启动时对 `<应用数据>/vibemate.lock`（Unix 0600）取独占系统锁（`File::try_lock`）并在进程生命周期内持有，进程退出或崩溃由系统释放；第二个实例在打开数据库或触碰 Agent 目录前直接退出。无法取锁时应用照常运行，但跳过启动清理。
+- [x] **部署锁：** 进程内一把锁串行化注入、重新同步、移除、恢复 Finish/Dismiss、库更新后的刷新与清理；预览、批量预览与列表不取锁；等待上限 120 秒，超时返回 `operation_failed`。
+- [x] **`read_failed`：** 无法读取的已注入副本（目录或 `SKILL.md` 打不开、读取中变化）不再算 foreign；预览、重新同步与移除返回 `read_failed`，移除在写 journal 前检查，归属与文件保持原样；批量预览该行显示 `unreadable`；`SKILL.md` 被删除仍算 foreign。前端对预览/重新同步/移除显示「无法读取已注入的副本。请检查 Agent 文件夹的权限后重试。」
+- [ ] 维护者桌面验收（中英文、键盘与焦点、真实 Agent 发现）。
+
+**Verification:** Rust 测试覆盖重新同步（编辑副本带备份、改指链接、被删目标与切换方式、无归属、过期审阅、不同类型占用）、批量目标分类与 Codex 同名重复提示；前端行为测试覆盖注入行、移除确认与 Agent Skill 段。真实 Agent、维护者桌面与 Windows/Linux 未验收。
+
+**Dependencies:** P27,P28,P30,P34,P41。
+
 ## 阶段 H：维护与验收
 
 ### Task P34: 恢复未完成操作

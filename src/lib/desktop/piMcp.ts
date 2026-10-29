@@ -117,10 +117,10 @@ const previewSchema = z.strictObject({
 });
 /** Exact, sanitized entry plan. Approval is rechecked in Rust before any write. */
 export type PiMcpPlan = z.infer<typeof previewSchema>;
+/** Ownership metadata; the entry digest stays in Rust (it hashes secrets). */
 const ownership = z.strictObject({
     serverName,
     definitionRevision: revision,
-    entryDigest: digest,
     generation: id,
     enabled: z.boolean(),
 });

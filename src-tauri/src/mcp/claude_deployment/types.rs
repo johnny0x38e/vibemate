@@ -182,6 +182,7 @@ pub struct Deployment {
     /// Root the row owns; never accepted as a frontend write path.
     pub config_root: String,
     /// Recorded native ownership metadata.
+    #[serde(serialize_with = "public_ownership")]
     pub ownership: Ownership,
     /// `written`, `modified`, `missing` or `unreadable`; never `connected`.
     pub state: String,
@@ -282,4 +283,26 @@ pub struct RecoveryRequest {
     pub change_id: String,
     /// Hash of the complete current observation.
     pub approval: String,
+}
+
+/// IPC view of [`Ownership`]. `entry_digest` stays in Rust: it is a hash over
+/// the native entry including protected values (env / headers), so a client
+/// that knows the other fields could test candidate secrets against it.
+fn public_ownership<S: serde::Serializer>(
+    ownership: &Ownership,
+    serializer: S,
+) -> Result<S::Ok, S::Error> {
+    #[derive(Serialize)]
+    #[serde(rename_all = "camelCase")]
+    struct View<'a> {
+        server_name: &'a str,
+        definition_revision: i64,
+        generation: &'a str,
+    }
+    View {
+        server_name: &ownership.server_name,
+        definition_revision: ownership.definition_revision,
+        generation: &ownership.generation,
+    }
+    .serialize(serializer)
 }

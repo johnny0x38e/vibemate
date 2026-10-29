@@ -119,11 +119,11 @@ export const grokMcpDeployment: GrokMcpDeployment = {
     ownership: {
         serverName: "tools",
         definitionRevision: 1,
-        entryDigest: "e".repeat(64),
         generation: "b".repeat(32),
         enabled: true,
     },
     state: "written",
+    unmanagedKeys: [],
 };
 /** Independent retained entry operation. */
 export const grokMcpHistory: GrokMcpHistory = {

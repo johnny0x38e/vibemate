@@ -145,7 +145,11 @@ fn delete_in_transaction(
         .query_row(
             "SELECT
                 (SELECT COUNT(*) FROM pi_provider_binding WHERE provider_id = ?1) +
-                (SELECT COUNT(*) FROM grok_model_binding WHERE provider_id = ?1)",
+                (SELECT COUNT(*) FROM grok_model_binding WHERE provider_id = ?1) +
+                (SELECT COUNT(*) FROM codex_provider_binding WHERE provider_id = ?1) +
+                (SELECT COUNT(*) FROM codex_default_binding WHERE provider_id = ?1) +
+                (SELECT COUNT(*) FROM codex_settings_change
+                 WHERE provider_id = ?1 AND state = 'prepared')",
             [id.as_str()],
             |row| row.get(0),
         )
