@@ -375,7 +375,10 @@ fn default_root_is_home_claude_json_not_the_claude_directory() {
     );
     let state = f.state();
     assert_eq!(state.config_root, f.root.to_str().unwrap());
-    assert!(state.target_path.ends_with("/.claude.json"));
+    assert_eq!(
+        std::path::Path::new(&state.target_path),
+        f.root.join(".claude.json").as_path()
+    );
     assert!(!state.capabilities.toggle);
     // An unusable override never falls back to the home file.
     let broken = DiscoveryEnvironment {
