@@ -32,6 +32,8 @@ import { McpForm } from "./McpForm";
 import { McpDetail } from "./McpDetail";
 import { McpPiManager } from "./McpPiManager";
 import { McpGrokManager } from "./McpGrokManager";
+import { McpClaudeManager } from "./McpClaudeManager";
+import type { McpInjectAgent } from "./McpInjectRow";
 import { McpDeleteReferences } from "./McpDeleteReferences";
 import buttons from "../../components/actionButtons.module.css";
 import chip from "../../components/infoChip.module.css";
@@ -105,7 +107,8 @@ function preservedRequest(record: McpRecord): SaveMcpInput {
                   },
     };
 }
-/** Central definitions and reviewed Pi registration; never executes a server. */
+/** Central definitions and reviewed Pi/Grok/Claude Code registration; never
+ * executes a server. */
 export function McpView({
     hidden = false,
     homeRef,
@@ -121,7 +124,7 @@ export function McpView({
     const [deleteTarget, setDeleteTarget] = useState<McpRecord | null>(null);
     const [deleteAllowed, setDeleteAllowed] = useState(false);
     const [previewTarget, setPreviewTarget] = useState<{
-        agent: "pi" | "grok";
+        agent: McpInjectAgent;
         record: McpRecord;
         trigger: HTMLElement | null;
         intent: "manage" | "register" | "history";
@@ -774,6 +777,33 @@ export function McpView({
             )}
             {!hidden && previewTarget?.agent === "pi" && (
                 <McpPiManager
+                    key={`${previewTarget.record.id}-${String(previewTarget.record.revision)}-${previewTarget.intent}`}
+                    record={previewTarget.record}
+                    intent={previewTarget.intent}
+                    returnFocus={previewTarget.trigger}
+                    onClose={() => {
+                        setPreviewTarget(null);
+                    }}
+                    onReload={() => {
+                        const detailId =
+                            page.kind === "detail" ? page.record.id : null;
+                        setPreviewTarget(null);
+                        void reload();
+                        if (detailId !== null)
+                            void openRecord(detailId, "detail");
+                    }}
+                    onBusyChange={(busy) => {
+                        mutationPending.current = busy;
+                        if (active.current) setDeploymentBusy(busy);
+                    }}
+                    onChanged={() => {
+                        if (active.current)
+                            setDeploymentEpoch((value) => value + 1);
+                    }}
+                />
+            )}
+            {!hidden && previewTarget?.agent === "claude" && (
+                <McpClaudeManager
                     key={`${previewTarget.record.id}-${String(previewTarget.record.revision)}-${previewTarget.intent}`}
                     record={previewTarget.record}
                     intent={previewTarget.intent}

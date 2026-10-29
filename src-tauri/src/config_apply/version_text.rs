@@ -195,7 +195,8 @@ pub(crate) fn format_for(kind: OperationKind) -> ConfigFormat {
         OperationKind::ClaudeCodeSettings
         | OperationKind::PiSettings
         | OperationKind::PiMcp
-        | OperationKind::GrokMcp => ConfigFormat::Json,
+        | OperationKind::GrokMcp
+        | OperationKind::ClaudeMcp => ConfigFormat::Json,
         OperationKind::GrokSettings => ConfigFormat::Toml,
     }
 }

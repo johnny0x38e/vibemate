@@ -1678,6 +1678,100 @@ fn skill_deploy_operation_migration_preserves_v33_rows() {
 }
 
 #[test]
+fn claude_mcp_migration_preserves_v34_rows_and_restricts_definitions() {
+    let directory = TestDirectory::new("claude-mcp-upgrade");
+    let path = directory.path.join(DATABASE_FILE_NAME);
+    let definition_id = "fedcba9876543210fedcba9876543210";
+    let digest = "ab".repeat(32);
+    let generation = "cd".repeat(16);
+    {
+        let old = Storage::open_file(&path, &MIGRATIONS[..34]).expect("v34 database");
+        old.lock()
+            .unwrap()
+            .execute_batch(&format!(
+                "INSERT INTO mcp_definition(
+                    id, display_name, server_name, namespace, enabled, revision,
+                    connection, created_at, updated_at
+                 ) VALUES(
+                    '{definition_id}', 'Demo', 'demo', 'demo', 1, 1, '{{}}', 1, 1
+                 );
+                 INSERT INTO grok_mcp_deployment(
+                    config_root, definition_id, server_name, definition_revision,
+                    entry_digest, generation, enabled
+                 ) VALUES('/home/test/.grok', '{definition_id}', 'demo', 1,
+                    '{digest}', '{generation}', 1);"
+            ))
+            .expect("seed v34 rows");
+        assert!(
+            old.lock()
+                .unwrap()
+                .execute("SELECT 1 FROM claude_mcp_deployment", [])
+                .is_err(),
+            "v34 has no Claude Code MCP tables"
+        );
+    }
+
+    let storage = Storage::open_in_directory(&directory.path).expect("upgrade");
+    assert_eq!(storage.schema_version().expect("schema version"), 35);
+    assert_eq!(latest_schema_version(), 35);
+    let connection = storage.lock().expect("lock");
+    let kept: i64 = connection
+        .query_row("SELECT COUNT(*) FROM grok_mcp_deployment", [], |row| {
+            row.get(0)
+        })
+        .expect("grok rows");
+    assert_eq!(kept, 1);
+    connection
+        .execute(
+            "INSERT INTO claude_mcp_deployment(
+                config_root, definition_id, server_name, definition_revision,
+                entry_digest, generation
+             ) VALUES('/home/test', ?1, 'demo', 1, ?2, ?3)",
+            rusqlite::params![definition_id, digest, generation],
+        )
+        .expect("ownership row");
+    // Exact name is unique per root, and the definition cannot disappear.
+    let other = "1".repeat(32);
+    connection
+        .execute(
+            "INSERT INTO mcp_definition(
+                id, display_name, server_name, namespace, enabled, revision,
+                connection, created_at, updated_at
+             ) VALUES(?1, 'Other', 'other', 'other', 1, 1, '{}', 1, 1)",
+            [&other],
+        )
+        .expect("second definition");
+    assert!(
+        connection
+            .execute(
+                "INSERT INTO claude_mcp_deployment VALUES('/home/test', ?1, 'demo', 1, ?2, ?3)",
+                rusqlite::params![other, digest, generation],
+            )
+            .is_err()
+    );
+    assert!(
+        connection
+            .execute("DELETE FROM mcp_definition WHERE id=?1", [definition_id])
+            .is_err()
+    );
+    let change = |action: &str| {
+        connection.execute(
+            "INSERT INTO claude_mcp_change(
+                id, config_root, definition_id, server_name, definition_revision,
+                action, state, created_at
+             ) VALUES(lower(hex(randomblob(16))), '/home/test', ?1, 'demo', 1, ?2, 'completed', 1)",
+            rusqlite::params![definition_id, action],
+        )
+    };
+    for action in ["deploy", "revoke", "restore"] {
+        change(action).expect("written action");
+    }
+    for action in ["enable", "disable"] {
+        assert!(change(action).is_err(), "{action} is never journaled");
+    }
+}
+
+#[test]
 fn shipped_migrations_are_numbered_consecutively_from_one() {
     for (index, migration) in MIGRATIONS.iter().enumerate() {
         let expected = u32::try_from(index + 1).expect("migration count fits in u32");

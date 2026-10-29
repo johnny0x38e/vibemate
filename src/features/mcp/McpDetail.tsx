@@ -24,7 +24,7 @@ export interface McpDetailProps {
 }
 
 /**
- * MCP detail: definition facts + clear Pi/Grok inject rows.
+ * MCP detail: definition facts + clear Pi/Grok/Claude Code inject rows.
  * Page-level Edit is the only primary. Delete stays on the list.
  * Register and History open Manager dialogs; nothing is crammed into the row.
  */
@@ -93,7 +93,7 @@ export function McpDetail({
                 </DetailPanel>
 
                 {/*
-                 * Card B: clear Pi / Grok rows. Register (unregistered only)
+                 * Card B: clear Pi / Grok / Claude Code rows. Register (unregistered only)
                  * and History open dialogs owned by the parent view.
                  */}
                 <DetailPanel label={t("mcp.inject.title")}>
@@ -119,6 +119,17 @@ export function McpDetail({
                                 }}
                                 onHistory={(trigger) => {
                                     onHistory("grok", trigger);
+                                }}
+                            />
+                            <McpInjectRow
+                                agent="claude"
+                                record={record}
+                                blocked={backBlocked}
+                                onRegister={(trigger) => {
+                                    onRegister("claude", trigger);
+                                }}
+                                onHistory={(trigger) => {
+                                    onHistory("claude", trigger);
                                 }}
                             />
                         </>

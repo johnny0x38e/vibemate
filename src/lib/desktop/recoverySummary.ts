@@ -1,5 +1,6 @@
 import { isTauri } from "@tauri-apps/api/core";
 import type { ConfigurableAgent } from "./agents";
+import { readClaudeMcpState } from "./claudeMcp";
 import { readGrokMcpState } from "./grokMcp";
 import { readConfigurationHistory, type HistoryEntry } from "./history";
 import { readPiMcpState } from "./piMcp";
@@ -129,6 +130,22 @@ export async function listRecoverySummary(): Promise<
         }
     } catch {
         // Grok MCP root unavailable.
+    }
+
+    try {
+        const claude = await readClaudeMcpState();
+        if (claude.recovery !== null) {
+            items.push({
+                id: `mcp:claude:${claude.recovery.id}`,
+                domain: "mcp",
+                destination: "mcp",
+                agentId: "claudeCode",
+                subject: claude.recovery.serverName,
+                detail: `${claude.recovery.action}:${claude.recovery.observation}`,
+            });
+        }
+    } catch {
+        // Claude Code user-scope MCP target unavailable.
     }
 
     return { kind: "desktop", items };

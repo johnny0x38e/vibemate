@@ -8,6 +8,8 @@ GitHub release notes are extracted from the matching version section only.
 
 ### Added
 
+- Claude Code MCP registration in the user scope only (`$CLAUDE_CONFIG_DIR/.claude.json`, else `~/.claude.json`, top-level `mcpServers`). The MCP detail page adds a Claude Code row with review, register, revoke, history restore and refresh; every other key in the file is preserved byte for byte, previews mask env and header values, and interrupted writes appear in recovery. Claude has no per-server switch at this scope, so enable/disable is reported as unsupported, and a stdio definition with `cwd` is refused because Claude ignores it. Deletion is blocked while Claude Code still references a definition. Schema 35.
+
 - Overview RecoveryHub: aggregates unfinished Agent configuration history
   (`requiresResolution`), Skill deploy journal rows, and Pi/Grok MCP
   interruptions into one list that only navigates to the owning module. Browser
@@ -153,6 +155,12 @@ GitHub release notes are extracted from the matching version section only.
 
 ### Changed
 
+- The skills.sh marketplace is now a secondary page (same level as Install and Detail) instead of a dialog. Results show as fixed-size rectangular cards with paging; each card shows the skill's description as soon as the page loads, truncated with an ellipsis, and the selected card uses an accent outline. A larger detail dialog shows the description, summary and the catalog install command before installing.
+
+- MCP list rows keep only Edit, Enable/Disable, Delete and an info icon that opens the detail page; the row itself is no longer clickable and per-Agent status icons were removed from the list. The detail page lists Pi and Grok Build as rows with the Agent icon, name, config path and a Registered/Not registered status in distinct colors. Icon buttons on each row register (opening the review dialog when registration is allowed, otherwise a warning), open history, and refresh that Agent's status.
+
+- Dialog backdrops now cover the whole window, including the title bar, through one shared overlay style used by every dialog.
+
 - Documented the first P24.a model-parameter evidence matrix for installed Claude Code 2.1.304, Pi 1.3.0 and Grok Build 1.0.62, distinguishing existing metadata writes, native request channels, deprecated Grok effort fields and unresolved protocol checks. Parameter editing is not yet delivered.
 
 - Agent history details now open in a dialog instead of expanding the list. Multi-file versions use the same compact file switcher as detailed configuration; selecting a file changes only the preview, while restoration still applies the whole version.
@@ -186,6 +194,8 @@ GitHub release notes are extracted from the matching version section only.
 - Settings, themes and navigation. The desktop shell keeps a fixed 200 px expanded and 88 px collapsed sidebar, an overlay title bar on macOS with native traffic lights, in-app window controls on Windows and Linux, and eight light/dark themes with independent brightness. Sidebar activation always returns to the module home while preserving mounted state, and secondary pages share one left-aligned header with an icon-only Back control and trailing Save.
 
 ### Fixed
+
+- The skills marketplace no longer stays on loading forever. Its HTTPS client now installs the TLS crypto provider before the first request, so catalog and detail requests complete or report an error.
 
 - Startup can read the saved language preference when the private database already contains the Pi MCP tables from the pre-merge schema 31. That numbering clash made the current upgrade fail and closed storage before the app could continue. The upgrade keeps those tables and their rows, and records Claude Code as a skill deployment target.
 

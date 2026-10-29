@@ -1,9 +1,10 @@
-//! Thin Pi and Grok MCP lifecycle IPC. Rust chooses every native/backup path;
+//! Thin Pi, Grok and Claude Code MCP lifecycle IPC. Rust chooses every native/backup path;
 //! React sends identities, actions and approvals only. No server execution API.
 
 use crate::{
     agents::DiscoveryEnvironment,
     config_apply::BackupStore,
+    mcp::claude_deployment as claude,
     mcp::grok_deployment as grok,
     mcp::pi_deployment as deploy,
     storage::{Storage, StorageStatus},
@@ -231,4 +232,117 @@ pub(crate) async fn recover_grok_mcp_change(
     })
     .await
     .map_err(|_| grok::Error::OutcomeUnknown)?
+}
+
+fn claude_context(
+    app: &tauri::AppHandle,
+) -> Result<(DiscoveryEnvironment, BackupStore), claude::Error> {
+    let environment =
+        super::agents::environment(app).map_err(|_| claude::Error::TargetUnavailable)?;
+    let backups = app
+        .path()
+        .app_data_dir()
+        .map_err(|_| claude::Error::StorageUnavailable)?
+        .join("backups");
+    Ok((environment, BackupStore::new(backups)))
+}
+fn with_claude_storage<T>(
+    app: &tauri::AppHandle,
+    operation: impl FnOnce(&Storage) -> Result<T, claude::Error>,
+) -> Result<T, claude::Error> {
+    let status = app
+        .try_state::<StorageStatus>()
+        .ok_or(claude::Error::StorageUnavailable)?;
+    let storage = status
+        .storage()
+        .map_err(|_| claude::Error::StorageUnavailable)?;
+    operation(storage)
+}
+
+/// Read Claude Code root-scoped registrations and a pending recovery observation.
+#[tauri::command]
+pub(crate) async fn claude_mcp_state(
+    app: tauri::AppHandle,
+    request: claude::StateRequest,
+) -> Result<claude::State, claude::Error> {
+    let (environment, backups) = claude_context(&app)?;
+    tauri::async_runtime::spawn_blocking(move || {
+        with_claude_storage(&app, |storage| {
+            claude::read_state(storage, &environment, &request, &backups)
+        })
+    })
+    .await
+    .map_err(|_| claude::Error::OutcomeUnknown)?
+}
+
+/// Read a bounded page of one definition's retained Claude Code entry results.
+#[tauri::command]
+pub(crate) async fn claude_mcp_history(
+    app: tauri::AppHandle,
+    request: claude::HistoryRequest,
+) -> Result<claude::HistoryPage, claude::Error> {
+    let (environment, _) = claude_context(&app)?;
+    tauri::async_runtime::spawn_blocking(move || {
+        with_claude_storage(&app, |storage| {
+            claude::history(storage, &environment, &request)
+        })
+    })
+    .await
+    .map_err(|_| claude::Error::OutcomeUnknown)?
+}
+
+/// Rebuild one Claude Code native action and return only its masked summary and approval.
+#[tauri::command]
+pub(crate) async fn preview_claude_mcp_change(
+    app: tauri::AppHandle,
+    selection: claude::Selection,
+) -> Result<claude::Preview, claude::Error> {
+    let (environment, backups) = claude_context(&app)?;
+    tauri::async_runtime::spawn_blocking(move || {
+        with_claude_storage(&app, |storage| {
+            claude::preview(storage, &environment, &selection, &backups)
+        })
+    })
+    .await
+    .map_err(|_| claude::Error::OutcomeUnknown)?
+}
+
+/// Confirm an exact Claude Code preview; only deploy/update opens current OS credentials.
+#[tauri::command]
+pub(crate) async fn apply_claude_mcp_change(
+    app: tauri::AppHandle,
+    request: claude::ApplyRequest,
+) -> Result<claude::Applied, claude::Error> {
+    let (environment, backups) = claude_context(&app)?;
+    tauri::async_runtime::spawn_blocking(move || {
+        super::state::with_credential_lock(&app, claude::Error::OutcomeUnknown, || {
+            with_claude_storage(&app, |storage| {
+                claude::apply(
+                    storage,
+                    &crate::credentials::OsCredentialStore,
+                    &environment,
+                    &request,
+                    &backups,
+                )
+            })
+        })
+    })
+    .await
+    .map_err(|_| claude::Error::OutcomeUnknown)?
+}
+
+/// Explicitly reconcile an interrupted Claude Code before/intended observation.
+#[tauri::command]
+pub(crate) async fn recover_claude_mcp_change(
+    app: tauri::AppHandle,
+    request: claude::RecoveryRequest,
+) -> Result<claude::Applied, claude::Error> {
+    let (environment, backups) = claude_context(&app)?;
+    tauri::async_runtime::spawn_blocking(move || {
+        with_claude_storage(&app, |storage| {
+            claude::recover(storage, &environment, &request, &backups)
+        })
+    })
+    .await
+    .map_err(|_| claude::Error::OutcomeUnknown)?
 }

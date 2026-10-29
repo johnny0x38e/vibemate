@@ -3,6 +3,7 @@ import { useTranslation } from "react-i18next";
 import type { AgentId } from "../../lib/desktop/agents";
 import { usePiMcpRegistrations } from "../mcp/usePiMcpRegistrations";
 import { useGrokMcpRegistrations } from "../mcp/useGrokMcpRegistrations";
+import { useClaudeMcpRegistrations } from "../mcp/useClaudeMcpRegistrations";
 import buttons from "../../components/actionButtons.module.css";
 import styles from "./AgentList.module.css";
 
@@ -20,15 +21,85 @@ export function AgentMcpPanel({
     const { t } = useTranslation();
     const [epoch, setEpoch] = useState(0);
     const supported = agentId === "pi" || agentId === "grokBuild";
+    const claudeSupported = agentId === "claudeCode";
     const pi = usePiMcpRegistrations(hidden || agentId !== "pi", epoch);
     const grok = useGrokMcpRegistrations(
         hidden || agentId !== "grokBuild",
         epoch,
     );
+    const claude = useClaudeMcpRegistrations(
+        hidden || agentId !== "claudeCode",
+        epoch,
+    );
     const result = agentId === "grokBuild" ? grok : pi;
     return (
         <div className={styles["skillPanel"]}>
-            {!supported ? (
+            {claudeSupported ? (
+                // Claude Code user scope: registration only, no enable flag.
+                <>
+                    <p className={styles["hint"]}>
+                        {t("agents.mcpPanel.readOnlyClaude")}
+                    </p>
+                    {claude.kind === "loading" && (
+                        <p role="status">{t("mcp.claude.manage.loading")}</p>
+                    )}
+                    {claude.kind === "error" && (
+                        <p role="alert">
+                            {t(`mcp.claude.errors.${claude.code}`)}
+                        </p>
+                    )}
+                    {claude.kind === "ready" && (
+                        <>
+                            {claude.value.recovery && (
+                                <p role="status">
+                                    {t("mcp.claude.recovery.pending", {
+                                        name: claude.value.recovery.serverName,
+                                    })}
+                                </p>
+                            )}
+                            {claude.value.deployments.length === 0 ? (
+                                <p>{t("agents.mcpPanel.emptyClaude")}</p>
+                            ) : (
+                                <ul
+                                    className={styles["skillDeployList"]}
+                                    aria-label={t(
+                                        "agents.mcpPanel.listLabelClaude",
+                                    )}
+                                >
+                                    {claude.value.deployments.map((row) => (
+                                        <li key={row.definitionId}>
+                                            <p
+                                                className={
+                                                    styles["skillDeployRow"]
+                                                }
+                                            >
+                                                {t(
+                                                    "agents.mcpPanel.rowClaude",
+                                                    {
+                                                        name: row.displayName,
+                                                        state: t(
+                                                            `mcp.claude.states.${row.state}`,
+                                                        ),
+                                                    },
+                                                )}
+                                            </p>
+                                        </li>
+                                    ))}
+                                </ul>
+                            )}
+                        </>
+                    )}
+                    <button
+                        type="button"
+                        className={buttons["secondary"]}
+                        onClick={() => {
+                            setEpoch((value) => value + 1);
+                        }}
+                    >
+                        {t("mcp.claude.manage.refresh")}
+                    </button>
+                </>
+            ) : !supported ? (
                 <p className={styles["hint"]}>
                     {t("agents.mcpPanel.unsupported")}
                 </p>

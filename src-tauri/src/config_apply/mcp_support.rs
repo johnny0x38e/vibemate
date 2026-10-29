@@ -11,6 +11,7 @@ fn target_name(kind: OperationKind) -> Result<&'static str, WriteError> {
     match kind {
         OperationKind::PiMcp => Ok("mcp.json"),
         OperationKind::GrokMcp => Ok("config.toml"),
+        OperationKind::ClaudeMcp => Ok(".claude.json"),
         _ => Err(WriteError::InvalidStoredOperation),
     }
 }

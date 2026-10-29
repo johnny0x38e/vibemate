@@ -43,7 +43,7 @@ export function McpInjectAgentChrome({
     targetPath,
 }: {
     agentId: AgentId;
-    nameKey: "mcp.inject.pi" | "mcp.inject.grok";
+    nameKey: "mcp.inject.pi" | "mcp.inject.grok" | "mcp.inject.claude";
     targetPath: string | null;
 }): JSX.Element {
     const { t } = useTranslation();

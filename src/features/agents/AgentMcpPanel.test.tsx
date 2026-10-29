@@ -18,7 +18,16 @@ import {
 import { readGrokMcpState } from "../../lib/desktop/grokMcp";
 import { emptyPiMcpState, piMcpDeployment } from "../../test/piMcpFixtures";
 import { emptyGrokMcpState } from "../../test/grokMcpFixtures";
+import { readClaudeMcpState } from "../../lib/desktop/claudeMcp";
+import {
+    claudeMcpDeployment,
+    emptyClaudeMcpState,
+} from "../../test/claudeMcpFixtures";
 import { AgentMcpPanel } from "./AgentMcpPanel";
+vi.mock(import("../../lib/desktop/claudeMcp"), async (original) => ({
+    ...(await original()),
+    readClaudeMcpState: vi.fn(),
+}));
 vi.mock(import("../../lib/desktop/piMcp"), async (original) => ({
     ...(await original()),
     readPiMcpState: vi.fn(),
@@ -39,6 +48,14 @@ beforeEach(() => {
         .mockResolvedValue(emptyGrokMcpState);
 });
 afterEach(cleanup);
+beforeEach(() => {
+    vi.mocked(readClaudeMcpState)
+        .mockReset()
+        .mockResolvedValue({
+            ...emptyClaudeMcpState,
+            deployments: [claudeMcpDeployment],
+        });
+});
 
 test("only Pi observations are listed, refresh rereads, and management navigates without writes", async () => {
     const i18n = await createAppI18n("en"),
@@ -166,4 +183,35 @@ test("browser errors never turn into fake empty or connected registrations", asy
     expect(
         screen.queryByText("No managed Pi MCP entries in this directory."),
     ).toBeNull();
+});
+
+test("Claude Code lists user-scope registrations without an enabled flag", async () => {
+    const i18n = await createAppI18n("en");
+    render(
+        <StrictMode>
+            <I18nextProvider i18n={i18n}>
+                <AgentMcpPanel
+                    agentId="claudeCode"
+                    hidden={false}
+                    onOpenMcp={() => {}}
+                />
+            </I18nextProvider>
+        </StrictMode>,
+    );
+    const list = await screen.findByRole("list", {
+        name: "Managed Claude Code MCP registrations",
+    });
+    expect(list.textContent).toBe("Tools · Matches the managed entry");
+    expect(readPiMcpState).not.toHaveBeenCalled();
+    expect(readGrokMcpState).not.toHaveBeenCalled();
+    expect(
+        screen.getByText(/new Claude session or reconnect with \/mcp/),
+    ).toBeDefined();
+    vi.mocked(readClaudeMcpState).mockResolvedValue(emptyClaudeMcpState);
+    fireEvent.click(
+        screen.getByRole("button", { name: "Refresh registration" }),
+    );
+    await screen.findByText(
+        "No managed Claude Code MCP entries in this user scope.",
+    );
 });

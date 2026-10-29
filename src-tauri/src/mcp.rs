@@ -13,6 +13,7 @@ mod grok_preview;
 pub use grok_preview::{
     GrokMcpPreview, GrokMcpPreviewError, PreviewGrokMcpRequest, preview_grok_registration,
 };
+pub mod claude_deployment;
 pub mod grok_deployment;
 pub mod pi_deployment;
 mod pi_preflight;

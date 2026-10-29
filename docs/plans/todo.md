@@ -17,6 +17,7 @@
 9. skills.sh 市场浏览/安装、Git revision 检查与 P30 应用更新已交付。Skill 方向参考 [skills-marketplace-reference](skills-marketplace-reference.md)；不引入 preset/工作区。
 10. P35 非 MCP／Grok 引用与 P32/P33 MCP 写入、P34 Skill 恢复与 Overview `RecoveryHub`（schema v34）均已合入本机；统一入口只发现并跳转到对应模块，不重放写入。维护者决定桌面／真实连接验收后置；见 [phase-1](phase-1.md)、[skill-recovery](skill-recovery.md)。
 11. P24 可写代码已收口：未核实绑定不生成厂商 map／不猜测 Claude 容量通道；真实 Provider 接受与维护者 Tauri 验收仍后置。P35 代码侧引用约束已复核收口（2026-10-26）：Pi 保存档位按惰性偏好保留，中央删除不重写 Agent 文件。P36 代理侧浏览器检查已完成：Providers/Models、Agents、Skills、MCP、Settings、Overview 均检查 720×560 与窄宽度下的长内容、分页、错误态和键盘焦点，并修复列表挤压、英文单复数与 Agent 摘要截断。实际 Tauri 与维护者桌面验收待做；桌面与 P37–P39 发布前专项靠后。
+12. 2026-10-28 已推送：技能市场改为二级页（卡片、分页、加载即显示描述、详情弹窗，修复 TLS crypto provider 导致的一直加载）；MCP 列表只保留编辑／启停／删除与详情图标，Pi/Grok 注册、历史、刷新挪到详情页 Agent 行；所有弹窗遮罩覆盖整个窗口含标题栏。代码与 CI 通过，维护者桌面验收待做。
 
 ## 文档整理（2026-10-19）
 
@@ -34,6 +35,7 @@
 - Verification 使用 `AGENTS.md` 的适用命令；Rust 过滤测试必须实际运行非零用例。
 - 勾选表示该项已验证；代码完成不等于真实安装、推理或其他平台验收完成。
 - 任务完成后删除详细执行过程，保留仍未解决的限制；未来路径是建议，不提前创建空壳。
+- 所有 Agent 的 MCP 与 Skill 注入暂时只做用户级：不写项目级、Local 作用域或项目目录（维护者 2026-10-29）。
 - 所有配置写入/恢复预览统一采用两层展示（字段摘要 + 详情弹窗），见 [configuration.md](../configuration.md#preview-presentation)。
 
 ## 已交付摘要
@@ -65,7 +67,7 @@
 | Claude Code Skill 部署 | 第三个部署目标：配置根、symlink/copy、独立所有权与撤销，schema v31                   | [skills](../skills.md)、[Claude Code](../integrations/claude-code.md)                      |
 | P29                    | 预览 Skill 更新：按已记录 Git/npx 获取、比对摘要与路径差异、命名 keep/replace 策略   | [skills](../skills.md)                                                                     |
 | P30                    | 应用 Skill 更新：摘要令牌复核、keep/replace、中央库替换与部署刷新                    | [skills](../skills.md)                                                                     |
-| 市场安装               | skills.sh 浏览/搜索与 GitHub `HEAD` 安装入中央库；非 GitHub 来源拒绝                 | [skills](../skills.md)、[marketplace 参考](skills-marketplace-reference.md)                |
+| 市场安装               | skills.sh 二级页卡片/分页/描述预取与详情弹窗；GitHub `HEAD` 安装入中央库             | [skills](../skills.md)、[marketplace 参考](skills-marketplace-reference.md)                |
 | Revision 检查          | Git `ls-remote` 对比已记录修订并存储状态；列表提示 update_available；npx 不走此路    | [skills](../skills.md)                                                                     |
 
 P15 的真实连接记录来自维护者确认，不代表代理重新执行，也不补写未提供的模型、协议或套餐细节。
@@ -331,9 +333,27 @@ P24.b = Claude Code；P24.c = Pi；P24.d = Grok Build。服务商模型是唯一
 
 **Dependencies:** P03,P23,P31。
 
+### Task P33.b: 向 Claude Code 注入 MCP 配置（仅用户级）
+
+**状态：** 代码与自动化检查已在本机完成（2026-10-29，schema 35，未提交）：后端、MCP 详情页 Claude Code 行、Agent 详情只读槽、删除引用与恢复中心。用户级无单服务器开关，启停标为不支持；含 `cwd` 的 stdio 定义拒绝。维护者桌面验收待做。只写 `~/.claude.json` 顶层 `mcpServers`；不写 `projects.<路径>.mcpServers`（Local）、项目根 `.mcp.json` 或托管 `managed-mcp.json`。接入证据见 [Claude Code 契约](../integrations/claude-code.md#mcp-配置)。
+
+**Description:** 参照 P32/P33 的闭环，为 Claude Code 提供 MCP 注册：审阅预览、部署/更新、启停（若原生支持，否则明确不支持）、撤销、所选历史条目恢复、中断核对、中央删除引用保护与 Agent 只读汇总；前端在 MCP 详情页增加 Claude Code 行。
+
+**Acceptance criteria:**
+
+- [x] 只改 `~/.claude.json` 顶层 `mcpServers.<name>`，`~/.claude.json` 里其它键（含 `projects`、会话/账户状态）逐字节保留；写入原子、带备份与并发/过期复核。
+- [x] 按 Claude Code 原生格式独立映射 stdio 与 Streamable HTTP（及其需要的 type 字段），不照搬 Pi/Grok 映射；不支持的字段明确拒绝而非丢弃。
+- [x] 精确名称所有权，拒绝覆盖外来或被外部修改的条目；凭据只在 Rust 部署/更新时读取，预览与历史脱敏。
+- [x] 中央删除、Agent 详情 MCP 槽与恢复中心包含 Claude Code 引用；中英文与可访问名称齐全。
+- [ ] 维护者桌面与真实 Claude Code 连接验收（随发布前专项）。
+
+**Verification:** Rust 生命周期测试覆盖两种传输、脱敏、无关键保留、过期计划、foreign/modified、条目恢复与中断；完整 fmt、Clippy `-D warnings`、Rust 测试与 `check:frontend` 通过。
+
+**Dependencies:** P18–P21,P31,P32,P33。
+
 ### Checkpoint C33（P31–P33）
 
-- [ ] P31–P33 代码已交付；P33 维护者桌面／真实连接与跨平台仍未勾选。
+- [ ] P31–P33 代码已交付；P33 维护者桌面／真实连接与跨平台仍未勾选；P33.b（Claude Code 用户级 MCP）代码已完成，维护者验收待做。
 
 ## 阶段 H：维护与验收
 
@@ -450,7 +470,3 @@ BR0–BR5 已完成；现行边界见 [backend-modularity.md](backend-modularity
 - [ ] **BR9：MCP/Skill 来源安装设计。** 首个实际来源、固定 revision、安装计划/执行/更新/卸载、受管路径和恢复。路线 A 已确认：更新能力以「来源是否明确」为条件。
 - [ ] **BR10：API 转发设计。** 首条同协议转发、gateway 生命周期、路由、协议适配、流式/工具调用/取消/错误验收。
 - [ ] **BR11：Agent 安装设计。** 首个 Agent 的安装/升级/卸载契约、目标平台/架构与现有安装来源；安装完成后只检测，不自动启动或应用配置。
-
-## WIP note (uncommitted) — MCP inject → detail (frontend)
-
-维护者决定：MCP 列表去掉 per-Agent 注册摘要与 Pi/Grok 管理 IconButton；整行进入详情二级页，`McpPiManager` / `McpGrokManager` 仅在详情页（及删除引用入口）打开。列表保留编辑 / 启用禁用 / 删除（及 cleanup）。未改 `CHANGELOG.md`、`storage.rs`、`storage/tests.rs`；工作区保持未提交。

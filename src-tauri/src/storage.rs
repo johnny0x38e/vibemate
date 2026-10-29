@@ -743,6 +743,40 @@ const MIGRATIONS: &[Migration] = &[
         CREATE INDEX skill_deploy_operation_list
             ON skill_deploy_operation(created_at ASC, id ASC);",
     },
+    Migration {
+        version: 35,
+        // P33.b: Claude Code user-scope MCP entries own exact top-level
+        // `mcpServers` names in `<root>/.claude.json`. There is no native
+        // per-server enable flag, so ownership has no `enabled` column and the
+        // journal never records enable/disable actions.
+        sql: "CREATE TABLE claude_mcp_deployment (
+            config_root TEXT NOT NULL CHECK(length(config_root) BETWEEN 1 AND 4096),
+            definition_id TEXT NOT NULL REFERENCES mcp_definition(id) ON DELETE RESTRICT,
+            server_name TEXT NOT NULL CHECK(length(server_name) BETWEEN 1 AND 64),
+            definition_revision INTEGER NOT NULL CHECK(definition_revision>=1),
+            entry_digest TEXT NOT NULL CHECK(length(entry_digest)=64 AND entry_digest NOT GLOB '*[^0-9a-f]*'),
+            generation TEXT NOT NULL CHECK(length(generation)=32 AND generation NOT GLOB '*[^0-9a-f]*'),
+            PRIMARY KEY(config_root,definition_id),
+            UNIQUE(config_root,server_name)
+        ) STRICT, WITHOUT ROWID;
+        CREATE TABLE claude_mcp_change (
+            id TEXT PRIMARY KEY CHECK(length(id)=32 AND id NOT GLOB '*[^0-9a-f]*'),
+            config_root TEXT NOT NULL CHECK(length(config_root) BETWEEN 1 AND 4096),
+            definition_id TEXT NOT NULL CHECK(length(definition_id)=32),
+            server_name TEXT NOT NULL CHECK(length(server_name) BETWEEN 1 AND 64),
+            definition_revision INTEGER NOT NULL CHECK(definition_revision>=1),
+            action TEXT NOT NULL CHECK(action IN ('deploy','revoke','restore')),
+            state TEXT NOT NULL CHECK(state IN ('prepared','completed','aborted')),
+            before_digest TEXT CHECK(before_digest IS NULL OR length(before_digest)=64),
+            intended_digest TEXT CHECK(intended_digest IS NULL OR length(intended_digest)=64),
+            before_owner TEXT CHECK(before_owner IS NULL OR json_valid(before_owner)),
+            after_owner TEXT CHECK(after_owner IS NULL OR json_valid(after_owner)),
+            operation_id TEXT REFERENCES config_operation(id) ON DELETE RESTRICT,
+            created_at INTEGER NOT NULL CHECK(created_at>=0)
+        ) STRICT;
+        CREATE UNIQUE INDEX claude_mcp_one_pending_root ON claude_mcp_change(config_root) WHERE state='prepared';
+        CREATE INDEX claude_mcp_history ON claude_mcp_change(config_root,definition_id,created_at DESC,id DESC);",
+    },
 ];
 
 /// Errors from opening or migrating the private database.

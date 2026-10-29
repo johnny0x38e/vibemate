@@ -1,6 +1,7 @@
 import { beforeEach, expect, test, vi } from "vitest";
 import { isTauri } from "@tauri-apps/api/core";
 import { readConfigurationHistory } from "./history";
+import { readClaudeMcpState } from "./claudeMcp";
 import { readGrokMcpState } from "./grokMcp";
 import { readPiMcpState } from "./piMcp";
 import { listSkillDeployRecoveries } from "./skills";
@@ -22,6 +23,10 @@ vi.mock(import("./piMcp"), async (importOriginal) => ({
     ...(await importOriginal()),
     readPiMcpState: vi.fn(),
 }));
+vi.mock(import("./claudeMcp"), async (importOriginal) => ({
+    ...(await importOriginal()),
+    readClaudeMcpState: vi.fn(),
+}));
 vi.mock(import("./grokMcp"), async (importOriginal) => ({
     ...(await importOriginal()),
     readGrokMcpState: vi.fn(),
@@ -32,6 +37,7 @@ const history = vi.mocked(readConfigurationHistory);
 const skills = vi.mocked(listSkillDeployRecoveries);
 const pi = vi.mocked(readPiMcpState);
 const grok = vi.mocked(readGrokMcpState);
+const claude = vi.mocked(readClaudeMcpState);
 
 beforeEach(() => {
     tauri.mockReset().mockReturnValue(true);
@@ -39,6 +45,7 @@ beforeEach(() => {
     skills.mockReset();
     pi.mockReset();
     grok.mockReset();
+    claude.mockReset().mockRejectedValue(new Error("claude down"));
 });
 
 test("browser preview stays honest without inventing rows", async () => {
@@ -182,6 +189,41 @@ test("keeps other domains when one read fails", async () => {
                 agentId: "grokBuild",
                 subject: "grok-tools",
                 detail: "revoke:before",
+            },
+        ],
+    });
+});
+
+test("surfaces an interrupted Claude Code user-scope MCP change", async () => {
+    history.mockRejectedValue(new Error("history down"));
+    skills.mockResolvedValue({ kind: "desktop", items: [] });
+    pi.mockRejectedValue(new Error("pi down"));
+    grok.mockRejectedValue(new Error("grok down"));
+    claude.mockResolvedValue({
+        configRoot: "/tmp/home",
+        targetPath: "/tmp/home/.claude.json",
+        capabilities: { toggle: false, transports: ["stdio", "http"] },
+        deployments: [],
+        nextCursor: null,
+        recovery: {
+            id: "44444444444444444444444444444444",
+            definitionId: "55555555555555555555555555555555",
+            serverName: "claude-tools",
+            action: "deploy",
+            observation: "intended",
+            approval: "d".repeat(64),
+        },
+    });
+    await expect(listRecoverySummary()).resolves.toEqual({
+        kind: "desktop",
+        items: [
+            {
+                id: "mcp:claude:44444444444444444444444444444444",
+                domain: "mcp",
+                destination: "mcp",
+                agentId: "claudeCode",
+                subject: "claude-tools",
+                detail: "deploy:intended",
             },
         ],
     });

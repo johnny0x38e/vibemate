@@ -231,6 +231,9 @@ pub enum OperationKind {
     GrokSettings,
     /// Grok user-level MCP entries in `config.toml`, journaled apart from models.
     GrokMcp,
+    /// Claude Code user-scope MCP entries in `.claude.json` (top-level
+    /// `mcpServers` only), journaled apart from `settings.json` model links.
+    ClaudeMcp,
 }
 
 impl OperationKind {
@@ -242,6 +245,7 @@ impl OperationKind {
             Self::PiMcp => "pi_mcp",
             Self::GrokSettings => "grok_settings",
             Self::GrokMcp => "grok_mcp",
+            Self::ClaudeMcp => "claude_mcp",
         }
     }
 
@@ -253,6 +257,7 @@ impl OperationKind {
             "pi_mcp" => Some(Self::PiMcp),
             "grok_settings" => Some(Self::GrokSettings),
             "grok_mcp" => Some(Self::GrokMcp),
+            "claude_mcp" => Some(Self::ClaudeMcp),
             _ => None,
         }
     }

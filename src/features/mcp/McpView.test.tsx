@@ -57,6 +57,26 @@ vi.mock(import("../../lib/desktop/piMcp"), async (original) => ({
     previewPiMcpChange: vi.fn(),
     applyPiMcpChange: vi.fn(),
 }));
+import {
+    ClaudeMcpError,
+    applyClaudeMcpChange,
+    previewClaudeMcpChange,
+    readClaudeMcpHistory,
+    readClaudeMcpState,
+} from "../../lib/desktop/claudeMcp";
+import {
+    claudeMcpDeployment,
+    claudeMcpHistory,
+    claudeMcpPlan,
+    emptyClaudeMcpState,
+} from "../../test/claudeMcpFixtures";
+vi.mock(import("../../lib/desktop/claudeMcp"), async (original) => ({
+    ...(await original()),
+    readClaudeMcpState: vi.fn(),
+    readClaudeMcpHistory: vi.fn(),
+    previewClaudeMcpChange: vi.fn(),
+    applyClaudeMcpChange: vi.fn(),
+}));
 vi.mock(import("../../lib/desktop/mcp"), async (importOriginal) => ({
     ...(await importOriginal()),
     listMcpDefinitions: vi.fn(),
@@ -137,6 +157,16 @@ beforeEach(() => {
     vi.mocked(previewPiMcpChange)
         .mockReset()
         .mockResolvedValue({ ...piMcpPlan, definitionId: row.id });
+    vi.mocked(readClaudeMcpState)
+        .mockReset()
+        .mockResolvedValue(emptyClaudeMcpState);
+    vi.mocked(readClaudeMcpHistory)
+        .mockReset()
+        .mockResolvedValue({ items: [], nextCursor: null });
+    vi.mocked(previewClaudeMcpChange)
+        .mockReset()
+        .mockResolvedValue({ ...claudeMcpPlan, definitionId: row.id });
+    vi.mocked(applyClaudeMcpChange).mockReset();
     list.mockReset().mockResolvedValue(page([row]));
     get.mockReset().mockResolvedValue(row);
     save.mockReset().mockResolvedValue({ ...row, revision: 2, enabled: false });
@@ -493,7 +523,7 @@ test("detail shows definition + clear inject rows; header Edit primary; no delet
     expect(
         await within(grok).findByText(emptyGrokMcpState.targetPath),
     ).toBeDefined();
-    expect((await screen.findAllByText(/^Not registered$/)).length).toBe(2);
+    expect((await screen.findAllByText(/^Not registered$/)).length).toBe(3);
     // Unregistered rows expose IconButtons; no text primary deploy on the row.
     expect(
         within(pi).getByRole("button", {
@@ -1028,4 +1058,153 @@ test("deleted credential cleanup remains retryable with an empty library after r
             }),
         ).toBeNull();
     });
+});
+
+test("Claude Code row shows icon, user-scope path, distinct status and accessible IconButtons", async () => {
+    await setup();
+    await openDetail();
+    const claude = await screen.findByRole("region", {
+        name: "Claude Code registration · Tools",
+    });
+    expect(
+        await within(claude).findByText(emptyClaudeMcpState.targetPath),
+    ).toBeDefined();
+    expect(claude.querySelector('[data-agent="claudeCode"]')).not.toBeNull();
+    const status = await within(claude).findByText(/^Not registered$/);
+    expect(status.getAttribute("data-state")).toBe("unregistered");
+    for (const name of [
+        "Refresh registration status · Claude Code · Tools",
+        "Register with Claude Code · Tools",
+        "Claude Code registration history · Tools",
+    ])
+        expect(within(claude).getByRole("button", { name })).toBeDefined();
+    // User scope has no per-server toggle: nothing enable/disable-like on the row.
+    expect(
+        within(claude).queryByRole("button", { name: /enable|disable/i }),
+    ).toBeNull();
+    expect(readClaudeMcpState).toHaveBeenCalledWith(row.id);
+
+    // A registered definition switches to the success status and drops "+".
+    vi.mocked(readClaudeMcpState).mockResolvedValue({
+        ...emptyClaudeMcpState,
+        deployments: [{ ...claudeMcpDeployment, definitionId: row.id }],
+    });
+    fireEvent.click(
+        within(claude).getByRole("button", {
+            name: "Refresh registration status · Claude Code · Tools",
+        }),
+    );
+    const registered = await within(claude).findByText(/^Registered$/);
+    expect(registered.getAttribute("data-state")).toBe("registered");
+    expect(
+        within(claude).queryByRole("button", {
+            name: "Register with Claude Code · Tools",
+        }),
+    ).toBeNull();
+});
+
+test("Claude Code + opens the deploy review dialog with no toggle and the Local-scope note", async () => {
+    await setup();
+    await openDetail();
+    fireEvent.click(
+        await screen.findByRole("button", {
+            name: "Register with Claude Code · Tools",
+        }),
+    );
+    const dialog = await screen.findByRole("dialog", {
+        name: "Claude Code registration · Tools",
+    });
+    expect(
+        await within(dialog).findByRole("button", {
+            name: "Confirm file change",
+        }),
+    ).toBeDefined();
+    expect(previewClaudeMcpChange).toHaveBeenCalledWith({
+        definitionId: row.id,
+        expectedRevision: row.revision,
+        action: "deploy",
+        historyId: null,
+    });
+    expect(within(dialog).getByText(claudeMcpPlan.target.path)).toBeDefined();
+    expect(
+        within(dialog).getByText(/same name in a project's Local scope/),
+    ).toBeDefined();
+    expect(
+        within(dialog).queryByRole("button", { name: /enable|disable/i }),
+    ).toBeNull();
+    fireEvent.click(within(dialog).getByRole("button", { name: "Close" }));
+    await waitFor(() => {
+        expect(screen.queryByRole("dialog")).toBeNull();
+    });
+    expect(applyClaudeMcpChange).not.toHaveBeenCalled();
+});
+
+test("Claude Code + on a non-registerable definition shows only a warning alert", async () => {
+    vi.mocked(previewClaudeMcpChange).mockRejectedValue(
+        new ClaudeMcpError("unsupported_field"),
+    );
+    await setup();
+    await openDetail();
+    fireEvent.click(
+        await screen.findByRole("button", {
+            name: "Register with Claude Code · Tools",
+        }),
+    );
+    const dialog = await screen.findByRole("dialog", {
+        name: "Claude Code registration · Tools",
+    });
+    const alert = await within(dialog).findByRole("alert");
+    expect(alert.textContent).toMatch(/cwd would be silently dropped/);
+    expect(
+        within(dialog).queryByRole("button", { name: "Confirm file change" }),
+    ).toBeNull();
+    expect(
+        within(dialog).queryByRole("region", { name: /registration/i }),
+    ).toBeNull();
+    fireEvent.click(within(dialog).getByRole("button", { name: "Close" }));
+    await waitFor(() => {
+        expect(screen.queryByRole("dialog")).toBeNull();
+    });
+    expect(applyClaudeMcpChange).not.toHaveBeenCalled();
+});
+
+test("Claude Code History IconButton opens history that reports registered results", async () => {
+    vi.mocked(readClaudeMcpHistory).mockResolvedValue(claudeMcpHistory);
+    await setup();
+    await openDetail();
+    fireEvent.click(
+        await screen.findByRole("button", {
+            name: "Claude Code registration history · Tools",
+        }),
+    );
+    const dialog = await screen.findByRole("dialog", {
+        name: "Claude Code registration history · Tools",
+    });
+    expect(
+        await within(dialog).findByText("Registered after this change"),
+    ).toBeDefined();
+    expect(
+        within(dialog).queryByRole("button", { name: "Review deployment" }),
+    ).toBeNull();
+});
+
+test("deletion lists Claude Code references and cannot orphan them", async () => {
+    vi.mocked(readClaudeMcpState).mockResolvedValue({
+        ...emptyClaudeMcpState,
+        deployments: [{ ...claudeMcpDeployment, definitionId: row.id }],
+    });
+    await setup();
+    fireEvent.click(
+        await screen.findByRole("button", { name: "Delete “Tools”" }),
+    );
+    await screen.findByText(/Claude Code reference: \/test\/home/);
+    fireEvent.click(screen.getByRole("button", { name: "Delete" }));
+    expect(deleteMcpDefinition).not.toHaveBeenCalled();
+    fireEvent.click(
+        screen.getByRole("button", { name: "Manage Claude Code references" }),
+    );
+    await screen.findByRole("dialog", {
+        name: "Claude Code registration · Tools",
+    });
+    expect(deleteMcpDefinition).not.toHaveBeenCalled();
 });
